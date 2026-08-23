@@ -32,3 +32,5 @@ coverage/
 
 # SDD scratch (not part of the app)
 .superpowers/
+
+*storybook.log
