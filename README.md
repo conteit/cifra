@@ -63,7 +63,7 @@ npm run storybook
 Storybook is the living design spec — every component ships with stories
 covering its states in both English and Italian.
 
-Published Storybook: _link added when the GitHub Pages deployment lands._
+Published Storybook: https://conteit.github.io/cifra/
 
 ## Architecture
 
