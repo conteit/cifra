@@ -73,11 +73,11 @@ Individual stages: `npm run typecheck`, `npm run lint`, `npm run format`
 E2E is **not** part of `verify` — it runs separately, and as its own CI job:
 
 ```bash
-npx playwright test
+npm run test:e2e
 ```
 
-(There is no `npm run test:e2e` alias yet; add one with the CI e2e job rather
-than inventing a different invocation.)
+`npm run test:e2e` runs Playwright (`playwright test`); CI's `e2e` job uses
+this same alias.
 
 Notes on the build: React Router runs in framework mode with `ssr: false`, so
 the app is a pure SPA. `npm run build` ends with `rm -rf build/server` — that is
