@@ -27,6 +27,50 @@ Each issue names the architecture sections that govern it
 sections before improvising; if the issue and the architecture disagree, stop
 and resolve it rather than picking one.
 
+## Work tracking: issues, labels, sprints
+
+**Issues are the only queue.** No plan documents drive execution — an issue
+carries everything: a one-paragraph goal, its `Governed by:` architecture
+sections, and acceptance bullets. If work isn't an issue, file one before
+starting it (`type:*` + priority + `phase:N` labels, body in the same shape).
+
+**Label taxonomy** (every issue gets one of each of the first three):
+
+- *Type*: `type:planned` (roadmap work) · `type:bug` · `type:security` ·
+  `type:debt` · `type:design` (Storybook/design-track work, ships component +
+  stories in the same PR)
+- *Priority*: `p0` (drop everything) · `p1` (this or next sprint) · `p2`
+  (backlog). Bugs are scheduled by priority — a `p2` bug can wait, `type:planned`
+  roadmap work is prioritized per the architecture §Roadmap order.
+- *Phase*: `phase:1` … `phase:9` — maps the issue to the architecture roadmap.
+- *Status*: `ready` = claimable now (dependencies met); `blocked` = waiting on
+  another issue, named in the body. When a blocking issue closes, move its
+  dependents to `ready`.
+
+**Sprints are GitHub milestones** ("Sprint 01", "Sprint 02", …) with a due
+date — nothing else is a sprint. Phases are *labels*, never milestones. The
+lifecycle:
+
+1. **Plan**: agree an issue set with the owner, assign the milestone, set the
+   due date (~2 weeks). `gh issue list --milestone "Sprint NN"` is the sprint
+   scope; scope changes mid-sprint are deliberate decisions, not drift.
+2. **Execute**: one issue → one `feat/<issue>-slug` branch → one PR referencing
+   the issue (`Closes #N`). PR merges only on green required checks.
+3. **Sprint close — the review gate**: before the milestone closes, run a
+   correctness + security review pass over the sprint's merged diff. Every
+   finding gets an explicit decision, recorded where it was made:
+   - *not acceptable as-is* → fixed inside the sprint (amend the open PR or an
+     immediate fix-PR) before the milestone closes;
+   - *deferrable* → new issue with `type:bug`/`type:security` + priority,
+     scheduled by priority into a later sprint. **Never silently dropped.**
+4. **Retro**: a short note in `docs/sprints/NN.md` — what shipped, decisions
+   made, carry-overs — then close the milestone and plan the next one.
+
+**Deferred work goes into issue bodies, not into memory or chat.** When a
+review or a task uncovers follow-up work, append it to the owning issue's
+acceptance bullets (see #1 and #9 for the pattern) or file a new issue — that
+way any session, human or agent, picks it up from GitHub alone.
+
 ## Authoritative docs, in precedence order
 
 1. **`docs/architecture.md`** — product, requirements (68 IDs), roadmap,
