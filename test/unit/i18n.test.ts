@@ -7,10 +7,11 @@ describe('i18n locales', () => {
     expect(Object.keys(itStrings).sort()).toEqual(Object.keys(en).sort());
   });
 
-  it('no empty values', () => {
+  it('no empty or whitespace-only string values (function values pass explicitly)', () => {
     for (const locale of [en, itStrings]) {
       for (const [key, value] of Object.entries(locale)) {
-        expect(value, key).not.toBe('');
+        const isValid = typeof value === 'function' || value.trim().length > 0;
+        expect(isValid, key).toBe(true);
       }
     }
   });
