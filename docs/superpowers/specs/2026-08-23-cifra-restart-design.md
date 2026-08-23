@@ -19,7 +19,7 @@ offline-capable interface that never exposes financial data to servers.
 
 | Asset | Destination |
 |---|---|
-| Planning corpus: PROJECT.md, 56 requirements, 9-phase roadmap, decision log, research | `docs/architecture.md` + GitHub issues/labels |
+| Planning corpus: PROJECT.md, 68 requirements, 9-phase roadmap, decision log, research | `docs/architecture.md` + GitHub issues/labels |
 | ADR-003 bank report parsing (formats, profiles, sign/date/encoding conventions) | `docs/architecture.md` import section |
 | i18n strings, EN/IT (~108 keys) | `app/i18n/` resources |
 
