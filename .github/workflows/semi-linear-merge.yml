@@ -1,0 +1,47 @@
+name: Semi-linear merge
+
+# Branch protection's required status checks enforce that this check must
+# pass before merging, but GitHub does not natively require a branch to be
+# up to date with main before allowing a merge unless "require branches to
+# be up to date before merging" is also enabled. This job is the substitute
+# (and, where that setting is off, the backstop): it puts a red check with a
+# specific reason in front of the merge button, the same way `verify` and
+# `e2e` already do.
+#
+# The trap: when a pull request has a merge *conflict*, `pull_request`
+# workflows do not run at all — GitHub has nothing to check out. So this job
+# cannot fire exactly when a branch is most stale; it only catches the case
+# where the branch is behind but still mergeable. Do not read a green check
+# here as "this branch is current" — only as "this branch is not behind, or
+# GitHub could not tell".
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  semi-linear:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # The PR's actual head commit, not github.sha — for a pull_request
+      # event that is the synthetic merge commit GitHub builds from head and
+      # base, which is trivially a descendant of both and would make this
+      # check pass unconditionally.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Assert this branch is not behind main
+        run: |
+          git fetch origin main --quiet
+          if git merge-base --is-ancestor origin/main HEAD; then
+            echo "HEAD is a descendant of main — rebase not required."
+          else
+            behind=$(git rev-list --count HEAD..origin/main)
+            echo "::error::This branch is ${behind} commit(s) behind main; rebase before merging."
+            exit 1
+          fi

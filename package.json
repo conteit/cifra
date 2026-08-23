@@ -15,6 +15,7 @@
     "format": "biome format --write .",
     "format:check": "biome format .",
     "test:unit": "vitest run",
+    "test:e2e": "playwright test",
     "prepare": "if [ -e .git ] && command -v lefthook >/dev/null 2>&1; then lefthook install; else echo 'skipping git hooks'; fi",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
