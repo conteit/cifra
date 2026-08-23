@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Build output
+build/
+storybook-static/
+.react-router/
+
+# Testing
+test-results/
+playwright-report/
+coverage/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# Editors
+.vscode/
+.idea/
+*.iml
+
+# Logs
+*.log
+
+# SDD scratch (not part of the app)
+.superpowers/
