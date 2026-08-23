@@ -546,8 +546,9 @@ job.
   the list. Separate CI job.
 - **Fixtures:** synthetic bank CSV/XLSX files with fake data in Italian formats,
   under `test/fixtures`. **Never real bank exports.**
-- **Coverage:** v8 coverage reported in CI, no hard threshold gate initially,
-  watched at sprint review.
+- **Coverage:** v8 coverage reporting will be wired into CI once core-track
+  units land; no hard threshold gate planned initially — watched at sprint
+  review instead.
 
 ### Deployment
 
