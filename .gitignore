@@ -34,3 +34,6 @@ coverage/
 .superpowers/
 
 *storybook.log
+.vercel
+.env*
+!.env.example
