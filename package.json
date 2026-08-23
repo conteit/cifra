@@ -10,14 +10,15 @@
     "build": "react-router build && rm -rf build/server",
     "dev": "react-router dev",
     "preview": "vite preview --port 4173",
-    "typecheck": "react-router typegen && tsc",
+    "typecheck": "react-router typegen && tsc --noEmit",
     "lint": "biome lint .",
     "format": "biome format --write .",
     "format:check": "biome format .",
     "test:unit": "vitest run",
     "prepare": "if [ -e .git ] && command -v lefthook >/dev/null 2>&1; then lefthook install; else echo 'skipping git hooks'; fi",
     "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "verify": "npm run typecheck && npm run lint && npm run format:check && npm run test:unit && npm run build && npm run build-storybook"
   },
   "dependencies": {
     "isbot": "^5",
