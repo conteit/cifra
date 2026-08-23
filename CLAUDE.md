@@ -13,6 +13,9 @@ Playwright smoke e2e, the `verify` contract, and the ported EN/IT strings. No
 product feature is implemented yet — phases 1–9 in `docs/architecture.md`
 §Roadmap are all open work.
 
+The Phase 1–3 backlog (22 issues) is filed; Sprint 01 scope is issues #1–#8
+(Phase 1 design + core tracks, milestone "Sprint 01").
+
 The queue is GitHub issues:
 
 ```bash
