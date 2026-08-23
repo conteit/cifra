@@ -13,6 +13,7 @@
     "lint": "biome lint .",
     "format": "biome format --write .",
     "format:check": "biome format .",
+    "test:unit": "vitest run",
     "prepare": "if [ -e .git ] && command -v lefthook >/dev/null 2>&1; then lefthook install; else echo 'skipping git hooks'; fi"
   },
   "dependencies": {
@@ -30,9 +31,11 @@
     "@types/node": "^22",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@vitest/coverage-v8": "^4.1.11",
     "lefthook": "^2.1.10",
     "tailwindcss": "^4.2.2",
     "typescript": "^5.9.3",
-    "vite": "^8.0.3"
+    "vite": "^8.0.3",
+    "vitest": "^4.1.11"
   }
 }
