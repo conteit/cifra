@@ -12,7 +12,8 @@
     "typecheck": "react-router typegen && tsc",
     "lint": "biome lint .",
     "format": "biome format --write .",
-    "format:check": "biome format ."
+    "format:check": "biome format .",
+    "prepare": "if [ -e .git ] && command -v lefthook >/dev/null 2>&1; then lefthook install; else echo 'skipping git hooks'; fi"
   },
   "dependencies": {
     "isbot": "^5",
@@ -22,11 +23,14 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.10",
+    "@commitlint/cli": "^21.2.2",
+    "@commitlint/config-conventional": "^21.2.2",
     "@react-router/dev": "^8",
     "@tailwindcss/vite": "^4.2.2",
     "@types/node": "^22",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "lefthook": "^2.1.10",
     "tailwindcss": "^4.2.2",
     "typescript": "^5.9.3",
     "vite": "^8.0.3"
