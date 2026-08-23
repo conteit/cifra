@@ -105,6 +105,33 @@ runs commitlint; `pre-push` refuses direct pushes to `main`. Work on
 short-lived `feat/<issue>-slug` branches and open a PR per issue. Do not
 `--no-verify` around a failing hook — fix the cause.
 
+## Deployment & operations
+
+- **App → Vercel**: project `cifra` (team `paolos-projects-9edadd41`), connected
+  to GitHub — preview deploy per PR, production on `main`. Config in
+  `vercel.json` (static SPA: `build/client` output, catch-all rewrite).
+- **Deployment protection is ON deliberately** (Vercel Authentication, all
+  deployments): the owner wants access control until the app is ready. Do not
+  propose disabling it. For automated checks against real deployments, the repo
+  Actions secret `VERCEL_AUTOMATION_BYPASS_SECRET` exists — send it as the
+  `x-vercel-protection-bypass` header (add `x-vercel-set-bypass-cookie=true`
+  for browser flows). Nothing in CI uses it yet; today's `e2e` job tests the
+  local build.
+- **Storybook → GitHub Pages** at https://conteit.github.io/cifra/ (public,
+  deployed by `deploy-storybook.yml` on every merge to `main`). PRs additionally
+  upload `storybook-static` as a CI artifact.
+- **Branch protection on `main`**: required checks `verify`, `e2e`,
+  `semi-linear`; strict (branch must be up to date); linear history. Merge PRs
+  with `gh pr merge --rebase`. GitHub Actions are SHA-pinned; Renovate
+  (`renovate.json`, includes `helpers:pinGitHubActionDigests`) maintains pins
+  and dependency updates — its Dependency Dashboard issue appears once the
+  first scan runs.
+- **Sprints are GitHub milestones** with due dates ("Sprint 01"); phases are
+  `phase:N` labels. Before a sprint's milestone closes, a correctness+security
+  review pass runs over the sprint's merged work; every finding is either fixed
+  inside the sprint or filed as a new prioritized issue — never silently
+  dropped. Sprint retros go in `docs/sprints/NN.md`.
+
 ## Rules that are not negotiable
 
 - **No real bank data in fixtures.** Every CSV/XLSX fixture under
