@@ -53,7 +53,10 @@ lifecycle:
 
 1. **Plan**: agree an issue set with the owner, assign the milestone, set the
    due date (~2 weeks). `gh issue list --milestone "Sprint NN"` is the sprint
-   scope; scope changes mid-sprint are deliberate decisions, not drift.
+   scope; scope changes mid-sprint are deliberate decisions, not drift. The
+   **milestone description** records the sprint's track structure, intra-sprint
+   ordering, and what was deliberately excluded — read it first:
+   `gh api repos/conteit/cifra/milestones --jq '.[] | .title, .description'`.
 2. **Execute**: one issue → one `feat/<issue>-slug` branch → one PR referencing
    the issue (`Closes #N`). PR merges only on green required checks.
 3. **Sprint close — the review gate**: before the milestone closes, run a
