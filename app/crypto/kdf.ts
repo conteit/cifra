@@ -69,11 +69,103 @@ export const ARGON2ID_DEFAULT_PARAMS: Argon2idParams = Object.freeze({
   parallelism: 1,
 });
 
-/** Accepted bounds for stored parameters. Guards against a tampered `meta` row. */
+/**
+ * Per-parameter bounds. The minima are Argon2's own structural limits; the
+ * maxima are **security bounds** — see {@link ARGON2ID_COST_CEILING_KIB_PASSES}.
+ */
 const PARAM_BOUNDS = {
-  memorySizeKib: { min: 8, max: 1_048_576 },
-  iterations: { min: 1, max: 64 },
+  /**
+   * Max 262144 KiB = 256 MiB. This bounds the *peak allocation* independently
+   * of the cost ceiling below, which the ceiling alone does not: 1 GiB at
+   * `iterations: 1` costs 1048576 KiB-passes — exactly at the ceiling, 625 ms
+   * on an M4 — yet asking a mid-range phone browser for a 1 GiB Argon2 block
+   * array is an out-of-memory crash whatever the wall time says. 256 MiB is 4x
+   * the 64 MiB the architecture mandates for the default (§Key hierarchy step
+   * 2), which is headroom no plausible future default needs.
+   */
+  memorySizeKib: { min: 8, max: 262_144 },
+  /**
+   * Max 16 passes. Not the bound that limits wall time — the cost ceiling is —
+   * but a sanity bound on a parameter that has no legitimate reason to be
+   * large. 16 is exactly the ceiling divided by the mandated 64 MiB, so a
+   * 16-pass vault is only expressible at or below the architecture's memory
+   * figure, and it is 5.3x the current default of 3.
+   */
+  iterations: { min: 1, max: 16 },
   parallelism: { min: 1, max: 16 },
+} as const;
+
+/**
+ * The cost ceiling, in KiB-passes (`memorySizeKib * iterations`).
+ *
+ * **This is a security bound, not a performance tuning knob.** Parameters reach
+ * derivation from the plaintext, unauthenticated `meta` table (§Key hierarchy
+ * step 3), so anyone who can write that row chooses the cost of the next
+ * unlock. Without a ceiling that is a trivial denial of service: the previous
+ * bounds admitted 1 GiB x 64 passes, **measured at 36.5 s** of frozen main
+ * thread on an Apple M4 under Node 24 (Sprint 01 security review, S-4).
+ *
+ * The ceiling is on the *product* rather than on each parameter alone because
+ * per-parameter caps multiply — a 256 MiB cap and a 16-pass cap together still
+ * admit 4 GiB-passes. Argon2id's cost is linear in `m * t`, which is what makes
+ * a single product bound both sufficient and tight. Measured on an M4, hash-wasm
+ * costs 0.51-0.60 us per KiB-pass and the split does not matter:
+ *
+ * | m x t                 | KiB-passes | measured |
+ * |-----------------------|-----------:|---------:|
+ * | 64 MiB x 3 (default)  |    196 608 |    100 ms |
+ * | 64 MiB x 16           |  1 048 576 |    531 ms |
+ * | 128 MiB x 8           |  1 048 576 |    547 ms |
+ * | 256 MiB x 4           |  1 048 576 |    560 ms |
+ * | 1 GiB x 1             |  1 048 576 |    625 ms |
+ * | 1 GiB x 64 (old cap)  | 67 108 864 | 36 494 ms |
+ *
+ * 1048576 KiB-passes is therefore ~0.6 s worst case on this machine. The
+ * architecture puts the *default* at roughly 500 ms on the target mid-range
+ * mobile browser, where it measures 100 ms here — so that device is ~5x slower
+ * and the ceiling's worst case there is ~3 s. Bad, but survivable, and bounded.
+ *
+ * **Headroom:** 5.3x the current default cost. #29 will likely raise the
+ * iteration count and #61 moves derivation into a Web Worker; neither should
+ * ever need to touch this constant, because any parameters costing more than 5x
+ * today's default already blow the architecture's own ~500 ms budget long
+ * before they reach the ceiling. If a future default genuinely needs more,
+ * raising this is a security decision with a fresh measurement, not a tweak.
+ */
+const ARGON2ID_COST_CEILING_KIB_PASSES = 1_048_576;
+
+/**
+ * The strength floor, applied to parameters production will actually derive
+ * with.
+ *
+ * A *weak* stored parameter set is not a decryption risk: weak params derive a
+ * different master key, so `unwrapDataKey` fails with `unwrap/failed` and no
+ * data comes out. The floor is here for the path that does bite — anything that
+ * *creates* or *re-wraps* a vault. Vault setup (#9) must always use
+ * {@link ARGON2ID_DEFAULT_PARAMS} and never read parameters back from `meta`;
+ * this floor is the backstop that turns a future mistake there into a loud
+ * `params/invalid` instead of a silently weak vault.
+ *
+ * The values are OWASP's weakest acceptable Argon2id configuration — m = 19 MiB,
+ * t = 2, p = 1 — expressed as a memory minimum plus a cost minimum rather than
+ * a minimum on each parameter. A minimum on `iterations` alone would reject
+ * m = 64 MiB, t = 1, which is *stronger* than the floor it would fail; the
+ * memory minimum is separate because it guards memory-hardness specifically,
+ * which a cost minimum cannot (8 KiB x 4864 passes buys the same block work
+ * with none of the resistance to parallel hardware that is the point of
+ * Argon2).
+ *
+ * **The moment to set a floor is now.** Stored parameters exist so a vault
+ * created under old settings still unlocks after the defaults move; a floor
+ * introduced *after* vaults exist could permanently lock out any vault below
+ * it — the exact data destruction this bound exists to prevent. No vault exists
+ * yet (Phase 1 has no user-facing write path; see D18), and the only default
+ * ever defined is 64 MiB x 3, well above the floor. It is free today and would
+ * not be later.
+ */
+const ARGON2ID_STRENGTH_FLOOR = {
+  memorySizeKib: 19_456,
+  costKibPasses: 38_912,
 } as const;
 
 /** Machine-readable reason a KDF call was rejected. */
@@ -113,15 +205,18 @@ function isPositiveIntegerWithin(
 }
 
 /**
- * Validates Argon2id parameters, whether they come from
- * {@link ARGON2ID_DEFAULT_PARAMS} or are read back from the plaintext `meta`
- * table. Reading parameters from storage is an untrusted path: without bounds a
- * tampered row could ask for gigabytes of memory or thousands of passes and
- * wedge the tab.
+ * Structural validity plus the cost ceiling: the parameters describe a real
+ * Argon2id configuration, and one this app is willing to spend time on.
+ *
+ * Kept separate from {@link assertArgon2idParams} because the published
+ * reference test vectors are deliberately weak — they exist to pin the
+ * *algorithm*, not this app's policy — so the test-only vector helper needs the
+ * ceiling without the strength floor. Every production path goes through
+ * {@link assertArgon2idParams}, which is this plus the floor.
  *
  * @throws {KdfError} with code `params/invalid`.
  */
-export function assertArgon2idParams(
+function assertArgon2idCostBounds(
   params: unknown,
 ): asserts params is Argon2idParams {
   if (typeof params !== 'object' || params === null) {
@@ -159,6 +254,55 @@ export function assertArgon2idParams(
     throw new KdfError(
       'params/invalid',
       'Argon2id memory must be at least 8 KiB per lane',
+    );
+  }
+  // The bound that actually caps wall-clock time. Both operands are already
+  // known to be integers within the per-parameter bounds, so the product can
+  // neither overflow nor be NaN.
+  if (memorySizeKib * iterations > ARGON2ID_COST_CEILING_KIB_PASSES) {
+    throw new KdfError(
+      'params/invalid',
+      `Argon2id cost (memory KiB x iterations) must be at most ${ARGON2ID_COST_CEILING_KIB_PASSES}`,
+    );
+  }
+}
+
+/**
+ * The production gate for Argon2id parameters, whether they come from
+ * {@link ARGON2ID_DEFAULT_PARAMS} or are read back from the plaintext `meta`
+ * table.
+ *
+ * Reading parameters from storage is an untrusted path — `meta` is plaintext
+ * *and* unauthenticated by design (§Key hierarchy step 3; authenticating the
+ * row is tracked as #32). The realistic consequence of a rewritten row is
+ * **denial of service and data destruction**, not disclosure: substituted
+ * parameters derive a *different* master key, so `unwrapDataKey` fails and
+ * nothing decrypts. What is left to defend against is cost — the ceiling — and,
+ * for any path that creates or re-wraps a vault, weakness — the floor.
+ *
+ * Both bounds are checked here, before {@link deriveMasterKey} touches
+ * Argon2id, so absurd parameters cost a thrown error rather than a frozen tab.
+ *
+ * @throws {KdfError} with code `params/invalid`.
+ */
+export function assertArgon2idParams(
+  params: unknown,
+): asserts params is Argon2idParams {
+  assertArgon2idCostBounds(params);
+
+  if (params.memorySizeKib < ARGON2ID_STRENGTH_FLOOR.memorySizeKib) {
+    throw new KdfError(
+      'params/invalid',
+      `Argon2id memory must be at least ${ARGON2ID_STRENGTH_FLOOR.memorySizeKib} KiB`,
+    );
+  }
+  if (
+    params.memorySizeKib * params.iterations <
+    ARGON2ID_STRENGTH_FLOOR.costKibPasses
+  ) {
+    throw new KdfError(
+      'params/invalid',
+      `Argon2id cost (memory KiB x iterations) must be at least ${ARGON2ID_STRENGTH_FLOOR.costKibPasses}`,
     );
   }
 }
@@ -247,7 +391,10 @@ async function argon2idDigest(
  * {@link deriveMasterKey}, which never returns key material — exposing the raw
  * digest anywhere else would defeat the non-extractable `CryptoKey` guarantee.
  * It deliberately bypasses the 16-byte-salt rule because the published vectors
- * use 8-byte salts.
+ * use 8-byte salts, and the strength floor because those vectors are
+ * deliberately weak (m = 256 KiB, t = 1) — they pin the algorithm, not this
+ * app's policy. The **cost ceiling still applies**: nothing in this codebase,
+ * test paths included, gets to burn unbounded time on Argon2id.
  */
 export async function argon2idDigestForVectorTests(
   passwordBytes: Uint8Array,
@@ -255,7 +402,7 @@ export async function argon2idDigestForVectorTests(
   params: Argon2idParams,
   hashLength: number,
 ): Promise<Uint8Array<ArrayBuffer>> {
-  assertArgon2idParams(params);
+  assertArgon2idCostBounds(params);
   return await argon2idDigest(passwordBytes, saltBytes, params, hashLength);
 }
 
