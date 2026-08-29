@@ -198,12 +198,22 @@ export const Open: Story = {
     // Scroll lock.
     await expect(doc.body.style.overflow).toBe('hidden');
 
-    // The scrim is painted from a token, not from a transparent default: if
-    // ::backdrop ever stops resolving --color-scrim this goes see-through and
-    // the assertion fails.
-    const backdrop = getComputedStyle(dialog, '::backdrop').backgroundColor;
-    await expect(backdrop).not.toBe('rgba(0, 0, 0, 0)');
-    await expect(backdrop).not.toBe('transparent');
+    // The scrim must be the `--color-scrim` token, not merely "something
+    // opaque". Chromium's UA stylesheet already paints ::backdrop with its own
+    // translucent black, so a "not transparent" assertion would pass with the
+    // token rule deleted — this compares against the resolved token instead.
+    // The probe normalises `rgb(28 28 26 / 0.45)` into the same `rgba(...)`
+    // serialisation getComputedStyle returns.
+    const probe = doc.createElement('div');
+    probe.style.backgroundColor = 'var(--color-scrim)';
+    doc.body.appendChild(probe);
+    const expectedScrim = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+
+    await expect(expectedScrim).not.toBe('rgba(0, 0, 0, 0)');
+    await expect(getComputedStyle(dialog, '::backdrop').backgroundColor).toBe(
+      expectedScrim,
+    );
   },
 };
 
