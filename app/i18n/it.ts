@@ -41,6 +41,10 @@ export const it: Record<
   creating_btn: 'Creazione in corso...',
   continue_overview: 'Continua alla panoramica',
 
+  // Dialog chrome — copy the Modal primitive needs but cannot resolve itself
+  // (a primitive has no locale; pages pass it in).
+  modal_close: 'Chiudi',
+
   // Navigation
   nav_overview: 'Panoramica',
   nav_transactions: 'Movimenti',

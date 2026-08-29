@@ -188,6 +188,11 @@
   --color-rule: rgb(28 28 26 / 0.12);
   --color-rule-soft: rgb(28 28 26 / 0.06);
 
+  /* The wash a modal dialog lays over the page. Ink at 45% — the same pigment
+     the rules are cut from, so the page dims rather than greys. Expressed as a
+     literal rgb() for the alpha, exactly as `rule` and `rule-soft` are. */
+  --color-scrim: rgb(28 28 26 / 0.45);
+
   /* Categories. */
   --color-category-groceries: var(--ramp-cat-groceries);
   --color-category-groceries-surface: var(--ramp-cat-groceries-wash);
@@ -239,6 +244,11 @@
   --container-*: initial;
   --container-sidebar: 206px;
   --container-page: 1280px;
+  /* The measure of a modal panel. Neither existing container fits: `page` is
+     the app shell's outer bound and `sidebar` is the nav rail. 440px keeps a
+     dialog's body copy near the 60–75 character measure the type scale is set
+     for, and still leaves margin inside the 402px mobile viewport. */
+  --container-dialog: 440px;
 
   /* ── Motion ───────────────────────────────────────────────────────── */
   --ease-*: initial;

@@ -32,6 +32,10 @@ export const en = {
   creating_btn: 'Creating...',
   continue_overview: 'Continue to overview',
 
+  // Dialog chrome — copy the Modal primitive needs but cannot resolve itself
+  // (a primitive has no locale; pages pass it in).
+  modal_close: 'Close',
+
   // Navigation
   nav_overview: 'Overview',
   nav_transactions: 'Transactions',
