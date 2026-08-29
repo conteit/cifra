@@ -1,7 +1,9 @@
 commit-msg:
   commands:
     commitlint:
-      run: npx --no-install commitlint --edit {1}
+      # {1} must stay quoted: git passes an absolute path for worktrees, and the
+      # repo checkout can live under a directory whose name contains a space.
+      run: npx --no-install commitlint --edit "{1}"
 
 pre-commit:
   commands:
