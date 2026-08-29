@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { createMemoryRouter, Outlet, RouterProvider } from 'react-router';
 import { expect, userEvent, within } from 'storybook/test';
-
+import { stringsFor } from '../app/i18n';
 import {
   AppShell,
   MAIN_CONTENT_ID,
@@ -10,7 +10,7 @@ import {
 import { type NavItem, navItems } from '../app/shell/nav-items';
 import { Button } from '../app/ui/button';
 import { Card } from '../app/ui/card';
-import { type Bilingual, type Locale, localeFrom, t } from './locale';
+import { type Bilingual, type Locale, localeFrom } from './locale';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    App shell — the header, nav and responsive frame every page mounts inside.
@@ -40,25 +40,13 @@ const copy = {
 } satisfies Record<string, Bilingual>;
 
 /**
- * Builds the shell's copy for a locale. `app/i18n/it` types its values as
- * `string | interpolator`, so the strings go through the `t()` helper that the
- * other stories use rather than being handed to the component wholesale.
+ * The shell's copy for a locale — the app's own resolver, not a story-local
+ * copy of it. Both string tables are typed `Strings`, so either satisfies
+ * `ShellStrings` structurally and the workbench renders exactly the object
+ * `app/routes/app-layout.tsx` passes at runtime (#47).
  */
 function shellStrings(locale: Locale): ShellStrings {
-  return {
-    nav_overview: t(locale, 'nav_overview'),
-    nav_transactions: t(locale, 'nav_transactions'),
-    nav_track: t(locale, 'nav_track'),
-    nav_wallet: t(locale, 'nav_wallet'),
-    nav_goals: t(locale, 'nav_goals'),
-    nav_import: t(locale, 'nav_import'),
-    nav_account: t(locale, 'nav_account'),
-    shell_nav_label: t(locale, 'shell_nav_label'),
-    shell_skip_to_content: t(locale, 'shell_skip_to_content'),
-    shell_more: t(locale, 'shell_more'),
-    shell_soon: t(locale, 'shell_soon'),
-    modal_close: t(locale, 'modal_close'),
-  };
+  return stringsFor(locale);
 }
 
 /** The nav table as it will look once every phase has landed its routes. */
