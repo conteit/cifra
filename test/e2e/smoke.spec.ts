@@ -3,8 +3,9 @@ import { expect, type Page, test } from '@playwright/test';
 /**
  * The Phase 1 success criterion this file guards: the app lands on the styled
  * shell, and the shell's FOUN-09 split is real in a real browser rather than
- * only in Storybook. No auth: there is no Firebase emulator yet (#44), so
- * everything here is reachable without a session.
+ * only in Storybook. No auth: nothing here is gated on a session yet — the
+ * sign-in screen is #9 and the route guard is #10. Signing in through the
+ * Firebase Auth emulator is covered separately, in `auth-emulator.spec.ts`.
  */
 
 test('renders the app shell with landmarks and a working skip link', async ({
