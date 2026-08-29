@@ -30,7 +30,7 @@ function withoutPluginsNamed(
 const config: StorybookConfig = {
   framework: '@storybook/react-vite',
   stories: ['../stories/**/*.stories.@(ts|tsx)'],
-  addons: ['@storybook/addon-a11y'],
+  addons: ['@storybook/addon-a11y', '@storybook/addon-vitest'],
   async viteFinal(cfg) {
     const { default: react } = await import('@vitejs/plugin-react');
     return {

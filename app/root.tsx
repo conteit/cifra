@@ -37,7 +37,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="theme-color" content="#1a1a1a" />
+        <meta name="theme-color" content="#F5F0E8" />
         <Meta />
         <Links />
       </head>
@@ -71,11 +71,11 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   }
 
   return (
-    <main className="pt-16 p-4 container mx-auto">
-      <h1>{message}</h1>
-      <p>{details}</p>
+    <main className="mx-auto max-w-page px-8 py-16">
+      <h1 className="font-display text-stat text-text-primary">{message}</h1>
+      <p className="mt-6 font-body text-body text-text-secondary">{details}</p>
       {stack && (
-        <pre className="w-full p-4 overflow-x-auto">
+        <pre className="mt-8 w-full overflow-x-auto rounded-card bg-surface-inset p-6 font-mono text-row-sub text-text-secondary">
           <code>{stack}</code>
         </pre>
       )}

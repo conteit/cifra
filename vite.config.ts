@@ -19,11 +19,16 @@ export default defineConfig({
         name: 'Cifra',
         short_name: 'Cifra',
         description: 'Privacy-first personal finance — local, encrypted',
-        theme_color: '#1a1a1a',
-        background_color: '#faf7f2',
+        // Editorial Italiana surface-page cream (--ramp-cream-100). The splash
+        // and the browser chrome must match the paper the app is printed on.
+        theme_color: '#F5F0E8',
+        background_color: '#F5F0E8',
         display: 'standalone',
         start_url: '/',
+        // icon.svg is the source of truth for the mark; the PNGs are rasterised
+        // from it by `npm run icons` for installers that need bitmaps.
         icons: [
+          { src: '/icons/icon.svg', sizes: 'any', type: 'image/svg+xml' },
           { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
         ],

@@ -12,8 +12,8 @@ export function meta(_: Route.MetaArgs) {
 
 export default function Home() {
   return (
-    <main>
-      <h1>Cifra</h1>
+    <main className="mx-auto max-w-page px-8 py-16">
+      <h1 className="font-display text-display text-text-primary">Cifra</h1>
     </main>
   );
 }
