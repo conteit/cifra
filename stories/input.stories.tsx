@@ -1,11 +1,12 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
-import { expect, userEvent, within } from 'storybook/test';
+import { expect, userEvent, waitFor, within } from 'storybook/test';
 
 import { Button } from '../app/ui/button';
 import { Card } from '../app/ui/card';
 import { Input } from '../app/ui/input';
 import { type Bilingual, type Locale, localeFrom, t } from './locale';
+import { resolveColorToken } from './token-probe';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Input — a labelled text field.
@@ -289,6 +290,18 @@ export const Focused: Story = {
     input.focus();
     await expect(input).toHaveFocus();
     await expect(input.matches(':focus-visible')).toBe(true);
+
+    // Same ring as every other interactive primitive, and it must be the token
+    // rather than the UA default — see the note in button.stories.
+    const expectedRing = resolveColorToken(
+      canvasElement.ownerDocument,
+      '--color-focus-ring',
+    );
+    await waitFor(async () => {
+      const styles = getComputedStyle(input);
+      await expect(styles.outlineStyle).not.toBe('none');
+      await expect(styles.outlineColor).toBe(expectedRing);
+    });
   },
 };
 

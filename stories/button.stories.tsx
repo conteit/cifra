@@ -1,9 +1,10 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Fragment } from 'react';
-import { expect, fn, userEvent, within } from 'storybook/test';
+import { expect, fn, userEvent, waitFor, within } from 'storybook/test';
 
 import { Button, type ButtonProps, type ButtonVariant } from '../app/ui/button';
 import { type Bilingual, type Locale, localeFrom, t } from './locale';
+import { resolveColorToken } from './token-probe';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Button — the one action in the system.
@@ -192,16 +193,24 @@ export const FocusAndHover: Story = {
     const primary = buttons[0];
     primary.focus();
     await expect(primary).toHaveFocus();
-    // The focus ring is the shared `focusRing` treatment, drawn as an outline
-    // in the focus-ring token. If a component ever swaps it for a border or a
-    // raw colour this assertion is what notices.
     await expect(primary.matches(':focus-visible')).toBe(true);
-    const outline = getComputedStyle(primary).outlineColor;
-    const expected = getComputedStyle(document.documentElement)
-      .getPropertyValue('--color-focus-ring')
-      .trim();
-    await expect(outline).not.toBe('rgba(0, 0, 0, 0)');
-    await expect(expected).not.toBe('');
+
+    // The ring must be the shared `focusRing` treatment painted in
+    // --color-focus-ring, not the browser's own default outline. Asserting
+    // merely "not transparent" would pass with the ring deleted, because
+    // Chromium then draws its own #005fcc focus ring — so compare against the
+    // resolved token. `waitFor`, because `transition-colors` animates
+    // outline-color too: read synchronously after focus() and the value is
+    // still the pre-transition currentColor.
+    const expectedRing = resolveColorToken(
+      canvasElement.ownerDocument,
+      '--color-focus-ring',
+    );
+    await waitFor(async () => {
+      const styles = getComputedStyle(primary);
+      await expect(styles.outlineStyle).not.toBe('none');
+      await expect(styles.outlineColor).toBe(expectedRing);
+    });
   },
 };
 
