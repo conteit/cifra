@@ -9,12 +9,20 @@ this repo is built against.
 
 The **foundation gate has landed**: React Router SPA scaffold, Tailwind 4,
 Biome, lefthook + commitlint, Storybook 10, PWA manifest and service worker,
-Playwright smoke e2e, the `verify` contract, and the ported EN/IT strings. No
-product feature is implemented yet — phases 1–9 in `docs/architecture.md`
-§Roadmap are all open work.
+Playwright smoke e2e, the `verify` contract, and the ported EN/IT strings.
 
-The Phase 1–3 backlog (22 issues) is filed; Sprint 01 scope is issues #1–#8
-(Phase 1 design + core tracks, milestone "Sprint 01").
+**Sprint 01 (Phase 1) has landed** the foundations both tracks needed: the
+design tokens and the four `app/ui` primitives with their stories, the
+responsive app shell (FOUN-09), the integer-cent money service, the crypto
+layer (`app/crypto`: Argon2id, AES-KW, AES-256-GCM), the Dexie 4 db layer with
+the encryption middleware and the plaintext-leak guard, and Firebase identity
+with the session store. No user-facing product feature ships yet — no sign-in
+screen, no lock screen, no transaction list — and phases 2–9 in
+`docs/architecture.md` §Roadmap are untouched. Read the milestone description
+and `docs/sprints/` for what a sprint actually closed; this paragraph is a
+summary, not a record.
+
+The Phase 1–3 backlog is filed as GitHub issues.
 
 The queue is GitHub issues:
 
@@ -210,18 +218,21 @@ short-lived `feat/<issue>-slug` branches and open a PR per issue. Do not
 - **Layer contract:** services never import React; crypto never imports Dexie.
 - **Semantic design tokens only** — components reference token names, never raw
   colour or size values.
-- **Both locales, always.** EN and IT keys stay in parity (`app/i18n/en.ts`,
-  `app/i18n/it.ts`, 134 keys each, guarded by a parity test). Adding a key to
-  one file without the other breaks `test:unit`.
+- **Both locales, always.** EN and IT hold **identical key sets**
+  (`app/i18n/en.ts`, `app/i18n/it.ts`). The parity test in
+  `test/unit/i18n.test.ts` is the contract — not a count written down here,
+  which is what drifted: this line claimed 134 keys while the files held 139.
+  Adding a key to one file without the other breaks `test:unit`.
 - **Firebase is auth only.** No financial data in Firestore, ever, except the
   encrypted sync blobs specified in `docs/architecture.md` §Roadmap Phase 8.
 
 ## Layout
 
 ```
-app/            application code (routes, i18n; db/crypto/services land per phase)
+app/            application code: crypto/ db/ services/ stores/ ui/ shell/ routes/ i18n/
 stories/        Storybook stories for design-system work
-test/unit/      Vitest suites
+test/unit/      Vitest suites (the `unit` project)
+test/support/   shared test machinery, e.g. the AST import-graph walker
 test/e2e/       Playwright specs
 docs/           architecture.md and specs
 .storybook/     Storybook config

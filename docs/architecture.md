@@ -385,8 +385,27 @@ never imports Dexie. Every layer is unit-testable in isolation, with
 
 `app/db/encryption-middleware.ts` is a Dexie 4 DBCore middleware. It intercepts
 `mutate` to encrypt before writes, and `get` / `getMany` / `query` to decrypt
-after reads. DBCore is promise-based, so async Web Crypto works natively — the
-constraint that forced synchronous TweetNaCl in v1 no longer applies.
+after reads.
+
+DBCore is promise-based, so an async cipher can be used at all — v1's
+synchronous TweetNaCl is not forced on us, and Argon2id, AES-GCM and a
+non-extractable `CryptoKey` are all reachable. **It does not follow that a bare
+`await` is safe.** An IndexedDB transaction is only *active* during the task
+that created it and during its own request callbacks: the moment control
+returns to the event loop with no request outstanding, the transaction commits.
+`crypto.subtle.encrypt` resolves in a later task, so awaiting it inside a Dexie
+transaction lets that transaction close underneath the middleware and the next
+operation throws `InvalidStateError`. Issue #6 reproduced this on the `update()`
+and `modify()` paths and on the primary-key-change path. It is not a
+`fake-indexeddb` artefact — browsers behave the same way, and it is the same
+hazard that pushed v1 to a synchronous cipher.
+
+Every await of Web Crypto inside the middleware therefore goes through
+**`Dexie.waitFor`**, which keeps issuing a dummy request against the
+transaction while the promise is pending, so the transaction stays active and
+the continuation resumes inside a request callback. Outside a transaction it is
+a passthrough. This is a requirement, not an optimisation: remove it and the
+mutation paths fail.
 
 ### Table field allowlist
 
