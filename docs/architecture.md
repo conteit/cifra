@@ -332,6 +332,7 @@ restart log.
 |---|---|---|
 | D16 | **Every pigment drawn as text clears WCAG 2.x AA (4.5:1) against every surface the design system permits it on.** The permitted foreground/surface pairs are enumerated and enforced by `test/unit/palette-contrast.test.ts`, which reads the values out of `app/app.css` itself. `surface-page`, `surface-card` and `surface-inset` are text surfaces and carry any text token; `surface-track` is a *graphic* surface (progress tracks, the secondary button's hover fill) and carries only `text-primary` and `text-secondary`; `surface-inverse` carries `text-inverse` and the accent washes; each money accent and each category colour is additionally paired with its own `-surface` wash | The type scale uses `text-meta` at 8.5px and the money accents at 17px, so no large-text exemption applies. Storybook's axe pass only sees pixels a story happens to paint, which is why `--ramp-sepia-500` (3.95:1) and `--ramp-amber-600` (2.87:1) shipped in #1 and were caught only when #2 made a11y blocking. Asserting the *contract* rather than the rendering catches a pigment that no story renders yet, and catches re-lightening later. FOUN-08 is preserved by moving lightness in OKLCH with hue held, never by desaturating toward grey |
 | D17 | **`--color-accent-income-strong` is a non-text token** — bars, chart series and fills. It carries the 3:1 WCAG 1.4.11 non-text bar, not 4.5:1 | At `#4a7c43` it reaches only 4.35:1 on the page and 3.82:1 on its own wash. Darkening it to pass as text would close the gap to `accent-income` (`#2d5a27`) to ~0.07 OKLCH lightness, which is not a distinguishable second green — the token would stop doing its job. It is lighter than `accent-income` by construction, and a *lighter* hover colour on cream paper lowers contrast rather than raising it, so it was never a sound text-hover token. Its role is the one that changes, not its pigment |
+| D18 | **Every plaintext-indexed column that carries meaning is bound into the record's AES-GCM AAD, and the allowlist forces that decision for each index.** The record envelope version goes to `0x02`; no migration is written | `date` and `type` must stay plaintext — IndexedDB range-queries them — but plaintext meant *unauthenticated*: the Sprint 01 security review (S-2) demonstrated that rewriting either column directly in IndexedDB produced a row that decrypted cleanly, flipping a transaction between the cash and electronic ledgers or between months with the auth tag still verifying. Binding them costs nothing at runtime (the AAD is already built per record) and the middleware re-encrypts on every write anyway. The declaration is mandatory per index rather than defaulted because the defect was the *absent question*, not a wrong answer. The version byte is bumped so a v1 blob reports `envelope/unsupported-version` instead of being indistinguishable from tampering; no migration ships because no vault exists — Phase 1 has no user-facing write path (vault setup is #9) — and doing this after real vaults exist would have meant a read-decrypt-re-encrypt pass over every record |
 
 ### Superseded v1 decisions
 
@@ -381,6 +382,42 @@ never imports Dexie. Every layer is unit-testable in isolation, with
    12-byte IV per record stored alongside the ciphertext. The GCM auth tag
    provides tamper detection.
 
+   The tag covers more than the payload. Each record's **additional
+   authenticated data (AAD)** binds the envelope version, the table name, the
+   record's primary key, and every plaintext-indexed column the allowlist marks
+   `{ aad: 'bound' }` — today `transactions.date` and `transactions.type`. The
+   layout is length-prefixed so it cannot be read two ways:
+
+   ```
+   version                                   1 byte  (0x02)
+   u32be(len(table))    || table
+   u32be(len(recordId)) || recordId
+   u32be(count of bound fields)              4 bytes
+   for each bound field, in allowlist order:
+       u32be(len(name))  || name
+       u32be(len(value)) || value
+   ```
+
+   Consequences: a blob cannot be moved to another row or another table, and a
+   plaintext column cannot be rewritten in the database behind the middleware's
+   back — either produces a different AAD and the read fails `decrypt/failed`
+   (surfaced as `record/corrupt`). Changing a bound column therefore means
+   **re-encrypting** the record, not re-indexing it; the middleware does that
+   already because every write is a whole-value `put`.
+
+   Bound values are authenticated **exactly as stored** — no normalisation, no
+   reformatting — because a writer and a reader that canonicalise differently
+   would turn a whole vault into decryption failures. A bound column must
+   therefore be a non-empty string: a numeric index has to choose its stored
+   string form before it can be bound.
+
+   The version byte is `0x02`. Version 1 bound only the table and the record id;
+   its AAD is a different byte string, so a v1 blob is rejected with
+   `envelope/unsupported-version` rather than an indistinguishable
+   `decrypt/failed`. No migration ships with the bump — there is nothing to
+   migrate, because no user-facing write path exists yet (vault setup is #9) and
+   the only v1 blobs ever written were written by tests. See D18.
+
 ### Encryption middleware
 
 `app/db/encryption-middleware.ts` is a Dexie 4 DBCore middleware. It intercepts
@@ -416,6 +453,24 @@ Encryption is per-table and allowlist-driven:
 - **Encrypted (single blob field):** everything sensitive — `amount`,
   `description`, `category`, `notes`, and any free text.
 - **Plaintext by design:** the `meta` table (wrapped data key, salt, KDF params).
+
+**Readable is not the same as rewritable.** Every secondary index on an
+encrypted table additionally declares an **AAD binding**, and there is no
+default:
+
+- `{ aad: 'bound' }` — the column's value is authenticated with the record (see
+  §Key hierarchy step 4). `transactions.date` and `transactions.type` are bound:
+  a wrong `date` moves a transaction between months and so between every
+  analytic and reconciliation window (ANLY-01..04, RECN-01..04), and a wrong
+  `type` moves money between the cash wallet and the bank (CASH-01..05).
+- `{ aad: 'unbound', rationale }` — the column may be rewritten undetected, and
+  must say in writing why that cannot distort anything. Nothing is unbound
+  today.
+
+Adding an index without declaring its binding fails `assertValidAllowlist` with
+`schema/unbound-index` at construction time. That is deliberate: issue #51
+happened because nothing made the question mandatory, not because someone
+answered it wrongly.
 
 The allowlist is the security contract for the db layer and is asserted by a
 plaintext-leak test that dumps raw IndexedDB after writes and fails if any known
