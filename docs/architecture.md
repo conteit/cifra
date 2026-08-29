@@ -403,6 +403,26 @@ Integer cents (`-1234` = −12,34 €), never floats. Formatting happens only at
 display edge via `Intl.NumberFormat('it-IT')`; parsing happens only at the import
 edge (Italian format `1.234,56` → `123456`).
 
+`app/services/money.ts` is the single implementation, and it binds three rules
+that follow from D13:
+
+- **Reject, never guess.** A separator that reads two ways with a 1000× gap —
+  `1.234` (grouped 1234, or a stray decimal point) and `1,234` (Italian decimals,
+  or English thousands) — is refused with a typed error code, not resolved by a
+  heuristic. Every rejection is a typed code; the parser never falls back to `0`
+  or `NaN`.
+- **Never round.** Digits past the second decimal are dropped only when they are
+  zeros and therefore carry no value; a non-zero digit that would be rounded away
+  rejects the input instead.
+- **No IEEE-754 on either path.** Parsing goes digit string → `BigInt` → safe
+  integer; formatting goes cents → `BigInt` → decimal string → `Intl`. There is
+  no division by 100 anywhere. The representable range is
+  ±9.007.199.254.740.991 cents; past it the parser reports `OUT_OF_RANGE`.
+
+Sign conventions that live outside the amount string — the profile's
+`amountSign`, separate Dare/Avere or Entrate/Uscite columns — belong to the
+import profile, not to the parser.
+
 ---
 
 ## Bank import
