@@ -1,5 +1,6 @@
 import { createFirebaseAuthPort } from '../services/auth/firebase-auth-port';
 import { createSessionStore, type SessionStore } from './session';
+import { SESSION_TEST_HANDLE } from './session-test-handle';
 
 /**
  * The composition root for the live session store.
@@ -18,6 +19,22 @@ import { createSessionStore, type SessionStore } from './session';
 let instance: SessionStore | undefined;
 
 export function getSessionStore(): SessionStore {
-  instance ??= createSessionStore(createFirebaseAuthPort());
+  if (instance !== undefined) return instance;
+  instance = createSessionStore(createFirebaseAuthPort());
+
+  // Development and emulator builds only — see `session-test-handle.ts` for
+  // what this is for and why it cannot reach production. The comparison is
+  // written out in full rather than pulled from a constant so that Vite's
+  // build-time substitution of `import.meta.env.MODE` folds it to `false` and
+  // the bundler deletes the branch; `vite.config.ts` asserts the deletion
+  // happened by reading the emitted bundle back.
+  if (
+    import.meta.env.MODE === 'development' ||
+    import.meta.env.MODE === 'emulator'
+  ) {
+    (globalThis as unknown as Record<string, unknown>)[SESSION_TEST_HANDLE] =
+      instance;
+  }
+
   return instance;
 }
