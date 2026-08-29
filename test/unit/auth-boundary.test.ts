@@ -1,7 +1,9 @@
-import { existsSync, readFileSync, statSync } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+
+import { filesUnder, packagesMatching } from '../support/import-graph';
+import { REPO_ROOT, repoImportGraph } from '../support/repo-graph';
 
 /**
  * Mechanical enforcement of the identity/vault boundary.
@@ -12,107 +14,24 @@ import { describe, expect, it } from 'vitest';
  * suite walks the *real* import graph of the auth modules so a future edit that
  * pulls crypto, Dexie or the Firebase SDK into the session store fails CI
  * instead of relying on attention.
+ *
+ * The graph is built by `test/support/import-graph.ts`, which reads edges off
+ * the TypeScript AST. This suite used to carry its own regular expression over
+ * the source text; review finding S-3 showed it extracted zero specifiers from
+ * a file with three live module references, so every assertion below was
+ * enforcing nothing that a template-literal `import()` could not walk past.
+ * The walker has its own tests in `test/unit/support/import-graph.test.ts`,
+ * including those three forms.
+ *
+ * The walker throws rather than skipping when a specifier is unresolvable or
+ * not a literal, so an assertion here can never be vacuous by omission.
  */
-
-const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-
-const RESOLVE_EXTENSIONS = ['', '.ts', '.tsx', '/index.ts', '/index.tsx'];
-
-interface ImportGraph {
-  /** Every local file reachable from the entry point, repo-relative. */
-  readonly files: ReadonlySet<string>;
-  /** Every bare (node_modules) specifier reachable from the entry point. */
-  readonly packages: ReadonlySet<string>;
-}
-
-/** Matches static imports/exports and dynamic `import()` calls. */
-const SPECIFIER_PATTERN =
-  /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*)['"]([^'"]+)['"]|\bimport\s+['"]([^'"]+)['"]/g;
-
-function readSpecifiers(source: string): string[] {
-  const specifiers: string[] = [];
-  for (const match of source.matchAll(SPECIFIER_PATTERN)) {
-    const specifier = match[1] ?? match[2];
-    if (specifier !== undefined) specifiers.push(specifier);
-  }
-  return specifiers;
-}
-
-function resolveLocal(fromFile: string, specifier: string): string | null {
-  const base = resolve(dirname(fromFile), specifier);
-  for (const extension of RESOLVE_EXTENSIONS) {
-    const candidate = base + extension;
-    if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
-  }
-  return null;
-}
-
-function buildImportGraph(entry: string): ImportGraph {
-  const entryPath = resolve(REPO_ROOT, entry);
-  const files = new Set<string>();
-  const packages = new Set<string>();
-  const queue = [entryPath];
-
-  while (queue.length > 0) {
-    const current = queue.pop();
-    if (current === undefined) continue;
-
-    const key = relative(REPO_ROOT, current);
-    if (files.has(key)) continue;
-    files.add(key);
-
-    for (const specifier of readSpecifiers(readFileSync(current, 'utf8'))) {
-      if (specifier.startsWith('.')) {
-        const resolved = resolveLocal(current, specifier);
-        // An unresolvable relative import means the walker is blind to part of
-        // the graph, which would make these assertions vacuous. Fail loudly.
-        expect(
-          resolved,
-          `unresolved relative import "${specifier}" in ${key}`,
-        ).not.toBeNull();
-        if (resolved !== null) queue.push(resolved);
-        continue;
-      }
-      if (specifier.startsWith('~/')) {
-        const resolved = resolveLocal(
-          resolve(REPO_ROOT, 'app/x'),
-          `./${specifier.slice(2)}`,
-        );
-        expect(
-          resolved,
-          `unresolved aliased import "${specifier}" in ${key}`,
-        ).not.toBeNull();
-        if (resolved !== null) queue.push(resolved);
-        continue;
-      }
-      packages.add(specifier);
-    }
-  }
-
-  return { files, packages };
-}
 
 /** Package specifiers that would mean encryption or storage crept into a graph. */
 const FORBIDDEN_PACKAGES = ['firebase', 'dexie', 'hash-wasm', 'idb'];
 
-function forbiddenPackagesIn(graph: ImportGraph): string[] {
-  return [...graph.packages]
-    .filter((specifier) =>
-      FORBIDDEN_PACKAGES.some(
-        (name) => specifier === name || specifier.startsWith(`${name}/`),
-      ),
-    )
-    .sort();
-}
-
-function cryptoOrDbFilesIn(graph: ImportGraph): string[] {
-  return [...graph.files].filter(
-    (file) => file.startsWith('app/crypto/') || file.startsWith('app/db/'),
-  );
-}
-
 describe('session store import graph', () => {
-  const graph = buildImportGraph('app/stores/session.ts');
+  const graph = repoImportGraph('app/stores/session.ts');
 
   it('walks more than the entry file (guards against a vacuous assertion)', () => {
     expect(graph.files.size).toBeGreaterThan(1);
@@ -121,16 +40,15 @@ describe('session store import graph', () => {
   });
 
   it('never reaches app/crypto or app/db', () => {
-    expect(cryptoOrDbFilesIn(graph)).toEqual([]);
+    expect(filesUnder(graph, 'app/crypto/', 'app/db/')).toEqual([]);
   });
 
   it('never reaches the Firebase SDK or a database driver', () => {
-    expect(forbiddenPackagesIn(graph)).toEqual([]);
+    expect(packagesMatching(graph, ...FORBIDDEN_PACKAGES)).toEqual([]);
   });
 
   it('never reaches React — the store is plain TS, bound to React separately', () => {
-    expect([...graph.packages]).not.toContain('react');
-    expect([...graph.packages]).not.toContain('react-dom');
+    expect(packagesMatching(graph, 'react', 'react-dom')).toEqual([]);
   });
 });
 
@@ -140,17 +58,17 @@ describe('Firebase SDK containment', () => {
     'app/services/auth/auth-error.ts',
     'app/services/auth/firebase-config.ts',
   ])('%s is free of the Firebase SDK', (entry) => {
-    const graph = buildImportGraph(entry);
-    expect(forbiddenPackagesIn(graph)).toEqual([]);
-    expect(cryptoOrDbFilesIn(graph)).toEqual([]);
+    const graph = repoImportGraph(entry);
+    expect(packagesMatching(graph, ...FORBIDDEN_PACKAGES)).toEqual([]);
+    expect(filesUnder(graph, 'app/crypto/', 'app/db/')).toEqual([]);
   });
 
   it('confines the SDK to the adapter (positive control for the walker)', () => {
     // If this fails, either the adapter stopped importing Firebase or the
-    // specifier scanner is broken — in which case every assertion above is
-    // meaningless. This test is the canary for that.
-    const graph = buildImportGraph('app/services/auth/firebase-auth-port.ts');
-    expect(forbiddenPackagesIn(graph)).toEqual([
+    // walker is broken — in which case every assertion above is meaningless.
+    // This test is the canary for that.
+    const graph = repoImportGraph('app/services/auth/firebase-auth-port.ts');
+    expect(packagesMatching(graph, ...FORBIDDEN_PACKAGES)).toEqual([
       'firebase/app',
       'firebase/auth',
     ]);
