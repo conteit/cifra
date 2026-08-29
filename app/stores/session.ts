@@ -218,7 +218,6 @@ export function createSessionStore(port: AuthPort): SessionStore {
     },
 
     async signOut() {
-      const hadSession = get().user !== null;
       let error: AuthError | null = null;
 
       try {
@@ -230,8 +229,14 @@ export function createSessionStore(port: AuthPort): SessionStore {
         error = toAuthError(caught);
       }
 
+      // Read *after* the await: a real provider fires its auth-state observer
+      // as part of signing out, so `handleUser(null)` has usually already
+      // cleared the user and emitted. Re-reading here keeps the wipe seam
+      // firing exactly once per ended session instead of twice.
+      const stillHeldSession = get().user !== null;
+
       set({ status: 'signed-out', user: null, error });
-      if (hadSession) emitSessionEnded('signed-out');
+      if (stillHeldSession) emitSessionEnded('signed-out');
     },
 
     clearError() {

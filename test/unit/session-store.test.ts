@@ -356,6 +356,25 @@ describe('session store', () => {
       expect(seen).toEqual([{ reason: 'signed-out' }]);
     });
 
+    it('fires exactly once when the provider also reports the sign-out', async () => {
+      // This is what the real Firebase port does: signOut() resolves *and* the
+      // auth-state observer fires with null. Both paths must not wipe twice.
+      const seen: SessionEndedEvent[] = [];
+      store.onSessionEnded((e) => seen.push(e));
+
+      store.getState().start();
+      fake.emit(ADA);
+      fake.signOut.mockImplementationOnce(async () => {
+        fake.emit(null);
+      });
+
+      await store.getState().signOut();
+
+      expect(seen).toEqual([{ reason: 'signed-out' }]);
+      expect(store.getState().status).toBe('signed-out');
+      expect(store.getState().user).toBeNull();
+    });
+
     it('fires when the provider drops the session', () => {
       const seen: SessionEndedEvent[] = [];
       store.onSessionEnded((e) => seen.push(e));
