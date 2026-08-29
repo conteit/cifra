@@ -30,6 +30,44 @@ function useRegisterServiceWorker() {
   }, []);
 }
 
+// Publishes the db-layer test seam — development and emulator builds only.
+//
+// `app/db/db-test-handle.ts` carries the reasoning; the short version is that
+// nothing in the app imports `app/db` or `app/crypto` yet (#9, #10), so the
+// encrypted database layer had never executed in a browser and the
+// `Dexie.waitFor` guarantee in the middleware was proven only against
+// `fake-indexeddb`. `test/e2e/db-liveness.spec.ts` drives the real middleware
+// through this handle.
+//
+// Three properties of this shape, all deliberate:
+//
+//   1. The mode comparison is written out in full rather than pulled from a
+//      constant, so Vite's build-time substitution of `import.meta.env.MODE`
+//      folds it to `false` in a production build and the whole statement goes.
+//      `vite.config.ts` asserts the deletion by reading the emitted bundle
+//      back. This mirrors `app/stores/session-instance.ts` exactly.
+//   2. The import is **dynamic**, so production does not merely drop an
+//      assignment — it never pulls `app/db` (and with it Dexie and hash-wasm)
+//      into the module graph at all. A static import would ship the whole db
+//      layer to real users for the sake of a branch that can never run.
+//   3. Module scope with a `document` check rather than an effect, for one
+//      measurable reason: an effect leaves `useEffect(() => {}, [])` behind in
+//      production once the branch inside it folds away, and the production
+//      bundle should be byte-for-byte what it would have been without this
+//      seam. It is — verified by building both ways. The `document` check is
+//      what `useRegisterServiceWorker` gets from being an effect: React Router
+//      still emits a server bundle for the SPA prerender, and Dexie has no
+//      business being evaluated there.
+if (
+  (import.meta.env.MODE === 'development' ||
+    import.meta.env.MODE === 'emulator') &&
+  typeof document !== 'undefined'
+) {
+  void import('./db/db-test-api').then(({ installDbTestHandle }) => {
+    installDbTestHandle();
+  });
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
   useRegisterServiceWorker();
 
