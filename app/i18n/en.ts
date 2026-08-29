@@ -184,3 +184,23 @@ export const en = {
   goals_deadline_label: (d: string) => `Deadline ${d}`,
   goals_saved_vs: (s: string) => `Saved vs avg: +${s}`,
 } as const;
+
+/**
+ * The copy contract both locales satisfy.
+ *
+ * `en` above is `as const`, so `typeof en` carries the English *literals* —
+ * useless as a shape for another locale. This mapped type widens every text
+ * key to `string` while keeping each interpolator's exact signature, so:
+ *
+ *   · `app/i18n/it.ts` is declared `const it: Strings` and a missing key, an
+ *     extra key, or a plain string where an interpolator belongs is a
+ *     compile error rather than something the parity test has to catch;
+ *   · either table can be handed to a component whose copy prop asks for
+ *     `string` values (`ShellStrings`), which is what lets
+ *     `stringsFor(locale)` have one return type.
+ */
+export type Strings = {
+  readonly [K in keyof typeof en]: (typeof en)[K] extends string
+    ? string
+    : (typeof en)[K];
+};

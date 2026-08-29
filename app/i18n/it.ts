@@ -1,11 +1,14 @@
-import type { en } from './en';
+import type { Strings } from './en';
 
-export type Strings = typeof en;
-
-export const it: Record<
-  keyof typeof en,
-  string | ((...args: never[]) => string)
-> = {
+/**
+ * The Italian table. Typed as `Strings` — the shape derived from `en` — so the
+ * compiler holds key parity and interpolator signatures, and so this table can
+ * be handed to a component wherever the English one can.
+ *
+ * Type parity is not *value* parity: an Italian value that is still English
+ * prose type-checks fine. That gap is issue #58.
+ */
+export const it: Strings = {
   // App identity
   tagline_line1: 'I tuoi soldi,',
   tagline_line2: 'cifrati.',
