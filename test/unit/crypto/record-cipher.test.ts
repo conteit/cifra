@@ -5,6 +5,7 @@ import {
   encryptRecord,
   GCM_TAG_LENGTH_BYTES,
   IV_LENGTH_BYTES,
+  MAX_BOUND_FIELDS,
   MAX_CONTEXT_FIELD_BYTES,
   MAX_PLAINTEXT_BYTES,
   MIN_ENVELOPE_LENGTH_BYTES,
@@ -34,6 +35,10 @@ async function makeDataKey(): Promise<CryptoKey> {
 const CONTEXT: RecordContext = {
   table: 'transactions',
   recordId: '018f3a2c-0000-7000-8000-000000000001',
+  boundFields: [
+    { name: 'date', value: '2026-08-01' },
+    { name: 'type', value: 'electronic' },
+  ],
 };
 
 const utf8 = (value: string) => new TextEncoder().encode(value);
@@ -319,6 +324,20 @@ describe('tamper detection', () => {
     );
   });
 
+  it('rejects a version-1 envelope as unsupported, not as a bad tag', async () => {
+    // #51 changed the AAD layout and bumped the version byte to 2. A v1 blob
+    // must be diagnosable as an old format, not indistinguishable from tampering.
+    const key = await makeDataKey();
+    const envelope = await encryptRecord(key, utf8('x'), CONTEXT);
+    const legacy = Uint8Array.from(envelope);
+    legacy[0] = 1;
+
+    await expectRecordCipherError(
+      decryptRecord(key, legacy, CONTEXT),
+      'envelope/unsupported-version',
+    );
+  });
+
   it('rejects a truncated envelope', async () => {
     const key = await makeDataKey();
     const envelope = await encryptRecord(
@@ -399,24 +418,199 @@ describe('additional authenticated data binds a record to its location', () => {
     const envelope = await encryptRecord(key, utf8('x'), {
       table: 'ab',
       recordId: 'c',
+      boundFields: [],
     });
 
     await expectRecordCipherError(
-      decryptRecord(key, envelope, { table: 'a', recordId: 'bc' }),
+      decryptRecord(key, envelope, {
+        table: 'a',
+        recordId: 'bc',
+        boundFields: [],
+      }),
       'decrypt/failed',
     );
+  });
+
+  it('refuses an envelope whose bound field value was rewritten', async () => {
+    const key = await makeDataKey();
+    const envelope = await encryptRecord(key, utf8('12500 cents'), CONTEXT);
+
+    // The #51 attack, at the crypto layer: the blob is untouched and sits in
+    // its own row, but a plaintext column beside it was edited.
+    await expectRecordCipherError(
+      decryptRecord(key, envelope, {
+        ...CONTEXT,
+        boundFields: [
+          { name: 'date', value: '2026-01-01' },
+          { name: 'type', value: 'electronic' },
+        ],
+      }),
+      'decrypt/failed',
+    );
+    await expectRecordCipherError(
+      decryptRecord(key, envelope, {
+        ...CONTEXT,
+        boundFields: [
+          { name: 'date', value: '2026-08-01' },
+          { name: 'type', value: 'cash' },
+        ],
+      }),
+      'decrypt/failed',
+    );
+  });
+
+  it('binds the field name, not only the value', async () => {
+    const key = await makeDataKey();
+    const envelope = await encryptRecord(key, utf8('x'), CONTEXT);
+
+    await expectRecordCipherError(
+      decryptRecord(key, envelope, {
+        ...CONTEXT,
+        boundFields: [
+          { name: 'giorno', value: '2026-08-01' },
+          { name: 'type', value: 'electronic' },
+        ],
+      }),
+      'decrypt/failed',
+    );
+  });
+
+  it('binds the order of the bound fields', async () => {
+    const key = await makeDataKey();
+    const envelope = await encryptRecord(key, utf8('x'), CONTEXT);
+
+    await expectRecordCipherError(
+      decryptRecord(key, envelope, {
+        ...CONTEXT,
+        boundFields: [...CONTEXT.boundFields].reverse(),
+      }),
+      'decrypt/failed',
+    );
+  });
+
+  it('refuses to open a bound record as though nothing were bound', async () => {
+    const key = await makeDataKey();
+    const envelope = await encryptRecord(key, utf8('x'), CONTEXT);
+
+    // A reader that forgot the bound columns must fail, not silently accept
+    // whatever the row happens to say.
+    await expectRecordCipherError(
+      decryptRecord(key, envelope, { ...CONTEXT, boundFields: [] }),
+      'decrypt/failed',
+    );
+  });
+
+  it('round-trips a record that binds nothing', async () => {
+    const key = await makeDataKey();
+    const context: RecordContext = {
+      table: 'categories',
+      recordId: 'cat-1',
+      boundFields: [],
+    };
+    const envelope = await encryptRecord(key, utf8('Alimentari'), context);
+
+    expect(fromUtf8(await decryptRecord(key, envelope, context))).toBe(
+      'Alimentari',
+    );
+  });
+
+  it('encodes the context unambiguously across the id/bound-field boundary', async () => {
+    const key = await makeDataKey();
+    const envelope = await encryptRecord(key, utf8('x'), {
+      table: 't',
+      recordId: 'ab',
+      boundFields: [{ name: 'c', value: 'v' }],
+    });
+
+    // Both contexts concatenate to "t" + "ab" + "c" + "v"; only the length
+    // prefixes tell them apart.
+    await expectRecordCipherError(
+      decryptRecord(key, envelope, {
+        table: 't',
+        recordId: 'a',
+        boundFields: [{ name: 'bc', value: 'v' }],
+      }),
+      'decrypt/failed',
+    );
+  });
+
+  it('encodes the context unambiguously across the name/value boundary', async () => {
+    const key = await makeDataKey();
+    const envelope = await encryptRecord(key, utf8('x'), {
+      table: 't',
+      recordId: 'r',
+      boundFields: [
+        { name: 'd', value: 'ab' },
+        { name: 'c', value: 'v' },
+      ],
+    });
+
+    // Both bound lists concatenate to "d" + "ab" + "c" + "v".
+    await expectRecordCipherError(
+      decryptRecord(key, envelope, {
+        table: 't',
+        recordId: 'r',
+        boundFields: [
+          { name: 'd', value: 'a' },
+          { name: 'bc', value: 'v' },
+        ],
+      }),
+      'decrypt/failed',
+    );
+  });
+
+  it('rejects a malformed bound field list', async () => {
+    const key = await makeDataKey();
+    const tooLong = 'x'.repeat(MAX_CONTEXT_FIELD_BYTES + 1);
+    const invalid: RecordContext['boundFields'][] = [
+      [{ name: '', value: 'v' }],
+      [{ name: 'date', value: '' }],
+      [{ name: tooLong, value: 'v' }],
+      [{ name: 'date', value: tooLong }],
+      [{ name: 42 as unknown as string, value: 'v' }],
+      [{ name: 'date', value: null as unknown as string }],
+      [null as unknown as { name: string; value: string }],
+      // A duplicate name would make the encoding ambiguous about which column
+      // carries which value.
+      [
+        { name: 'date', value: 'a' },
+        { name: 'date', value: 'b' },
+      ],
+      // Unbounded lists are refused rather than assembled.
+      Array.from({ length: MAX_BOUND_FIELDS + 1 }, (_, index) => ({
+        name: `f${index}`,
+        value: 'v',
+      })),
+      'date=2026-08-01' as unknown as RecordContext['boundFields'],
+    ];
+
+    for (const boundFields of invalid) {
+      await expectRecordCipherError(
+        encryptRecord(key, utf8('x'), { ...CONTEXT, boundFields }),
+        'context/invalid',
+      );
+    }
   });
 
   it('rejects an invalid context on both encrypt and decrypt', async () => {
     const key = await makeDataKey();
     const tooLong = 'x'.repeat(MAX_CONTEXT_FIELD_BYTES + 1);
     const invalid: RecordContext[] = [
-      { table: '', recordId: 'id' },
-      { table: 'transactions', recordId: '' },
-      { table: tooLong, recordId: 'id' },
-      { table: 'transactions', recordId: tooLong },
-      { table: 42 as unknown as string, recordId: 'id' },
-      { table: 'transactions', recordId: null as unknown as string },
+      { table: '', recordId: 'id', boundFields: [] },
+      { table: 'transactions', recordId: '', boundFields: [] },
+      { table: tooLong, recordId: 'id', boundFields: [] },
+      { table: 'transactions', recordId: tooLong, boundFields: [] },
+      { table: 42 as unknown as string, recordId: 'id', boundFields: [] },
+      {
+        table: 'transactions',
+        recordId: null as unknown as string,
+        boundFields: [],
+      },
+      {
+        table: 'transactions',
+        recordId: 'id',
+        boundFields: undefined as unknown as [],
+      },
       undefined as unknown as RecordContext,
     ];
 
@@ -429,7 +623,11 @@ describe('additional authenticated data binds a record to its location', () => {
 
     const envelope = await encryptRecord(key, utf8('x'), CONTEXT);
     await expectRecordCipherError(
-      decryptRecord(key, envelope, { table: '', recordId: 'id' }),
+      decryptRecord(key, envelope, {
+        table: '',
+        recordId: 'id',
+        boundFields: [],
+      }),
       'context/invalid',
     );
   });
@@ -474,7 +672,11 @@ describe('error hygiene', () => {
         'envelope/too-short',
       ),
       await expectRecordCipherError(
-        encryptRecord(key, utf8(marker), { table: '', recordId: 'id' }),
+        encryptRecord(key, utf8(marker), {
+          table: '',
+          recordId: 'id',
+          boundFields: [],
+        }),
         'context/invalid',
       ),
     ];

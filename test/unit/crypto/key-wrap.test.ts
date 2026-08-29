@@ -29,7 +29,11 @@ async function makeMasterKey(): Promise<CryptoKey> {
   ]);
 }
 
-const CONTEXT: RecordContext = { table: 'transactions', recordId: 'rec-1' };
+const CONTEXT: RecordContext = {
+  table: 'transactions',
+  recordId: 'rec-1',
+  boundFields: [],
+};
 const utf8 = (value: string) => new TextEncoder().encode(value);
 
 async function expectKeyWrapError(
