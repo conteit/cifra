@@ -321,6 +321,7 @@ Binding decisions from the 2026-08-23 restart design spec.
 | V1-2 | Per-user random 16-byte salt for key derivation, stored with the wrapped key | Prevents cross-user rainbow-table reuse; carried forward from v1 with Argon2id replacing PBKDF2 |
 | V1-3 | Semantic design tokens only — components never reference raw colour or size values | Keeps the Editorial Italiana language changeable in one place and makes theming additive |
 | V1-4 | Italian number and date parsing rules are explicit, never implicit | `1.234,56` must go through a dedicated parser; dates always parse against the profile's format, never `new Date(string)` |
+| V1-5 | **Light only. There is no dark theme** | Editorial Italiana is cream paper and green/ink print — "Light, not dark" is the identity, not a default. No `dark:` variants, no `prefers-color-scheme` branch, `color-scheme: light` pinned on the document. Adding a dark palette would need a new decision here first |
 
 ### Superseded v1 decisions
 
@@ -509,12 +510,18 @@ pushes to `main`.
 ### The `verify` contract
 
 ```
-npm run verify = typecheck && lint && format:check && test:unit && build && build-storybook
+npm run verify = typecheck && lint && format:check && test:unit && test:stories && build && build-storybook
 ```
 
 CI runs exactly this on every PR — no extra steps, no missing ones. If it is
 green locally it is green in CI. Playwright e2e runs as a separate, slower CI
 job.
+
+Vitest is split into two projects (`vitest.config.ts`). `test:unit` scopes to
+the `unit` project: Node environment, no browser, and it stays that way.
+`test:stories` scopes to the `stories` project: every Storybook story rendered
+in headless Chromium by `@storybook/addon-vitest`. Both are inside `verify`, so
+the `verify` CI job installs Chromium exactly as the `e2e` job does.
 
 ### Review gates
 
@@ -538,9 +545,9 @@ job.
   "unreadable via DevTools" criterion.
 - **Import:** a parser contract suite per format with fixture files, and a
   dedicated suite for the detection matrix (container sniff × profile signature).
-- **Component:** Testing Library where logic warrants it. Running all Storybook
-  stories as smoke tests via the Storybook Vitest addon is planned and tracked on
-  the design-track tokens issue; it is not yet part of `verify`.
+- **Component:** Testing Library where logic warrants it. Every Storybook story
+  also runs as a smoke test in headless Chromium via `@storybook/addon-vitest`
+  (the `stories` Vitest project), and that run is part of `verify`.
 - **E2E (Playwright):** a few critical journeys — vault create → lock → unlock;
   CSV import wizard end to end with a fixture; manual expense entry appearing in
   the list. Separate CI job.

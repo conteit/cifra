@@ -106,7 +106,7 @@ npm run verify
 is exactly:
 
 ```
-typecheck && lint && format:check && test:unit && build && build-storybook
+typecheck && lint && format:check && test:unit && test:stories && build && build-storybook
 ```
 
 CI runs **exactly this** on every PR — nothing more, nothing less. Green
@@ -115,7 +115,17 @@ seen it pass.
 
 Individual stages: `npm run typecheck`, `npm run lint`, `npm run format`
 (writes) / `npm run format:check` (verifies), `npm run test:unit`,
-`npm run build`, `npm run build-storybook`.
+`npm run test:stories`, `npm run build`, `npm run build-storybook`.
+
+Vitest runs two projects (`vitest.config.ts`):
+
+- **`unit`** — `npm run test:unit` (`vitest run --project unit`). Node
+  environment, no browser. Services, crypto, i18n. Keep it that way: nothing in
+  this project may need Playwright.
+- **`stories`** — `npm run test:stories` (`vitest run --project stories`). Every
+  Storybook story rendered as a smoke test in headless Chromium via
+  `@storybook/addon-vitest`. Needs `npx playwright install chromium`; CI's
+  `verify` job installs it the same way the `e2e` job does.
 
 E2E is **not** part of `verify` — it runs separately, and as its own CI job:
 
