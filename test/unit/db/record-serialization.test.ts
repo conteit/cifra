@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import { DbEncryptionError } from '../../../app/db/db-error';
 import {
+  aadBoundFields,
   assertKnownFields,
   decodeSensitiveFields,
   encodeSensitiveFields,
@@ -99,6 +100,60 @@ describe('encoding', () => {
       date: '2026-08-01',
       type: 'electronic',
     });
+  });
+});
+
+describe('AAD-bound plaintext fields', () => {
+  it('emits the bound fields in allowlist order, values untouched', () => {
+    expect(aadBoundFields('transactions', SPEC, RECORD)).toEqual([
+      { name: 'date', value: '2026-08-01' },
+      { name: 'type', value: 'electronic' },
+    ]);
+  });
+
+  it('binds the stored string verbatim — no normalisation to drift over', () => {
+    // Whatever the row holds is what gets authenticated. Reformatting here is
+    // how a writer and a reader end up disagreeing forever.
+    const odd = { ...RECORD, date: ' 2026-8-1 ', type: 'ELECTRONIC' };
+    expect(aadBoundFields('transactions', SPEC, odd)).toEqual([
+      { name: 'date', value: ' 2026-8-1 ' },
+      { name: 'type', value: 'ELECTRONIC' },
+    ]);
+  });
+
+  it('never sees an encrypted field, and never the primary key', () => {
+    const names = aadBoundFields('transactions', SPEC, RECORD).map(
+      (field) => field.name,
+    );
+    expect(names).not.toContain(SPEC.primaryKey);
+    for (const encrypted of Object.keys(SPEC.encrypted)) {
+      expect(names).not.toContain(encrypted);
+    }
+  });
+
+  it('rejects a bound field that is absent, empty, or not a string', () => {
+    for (const broken of [
+      { ...RECORD, date: undefined },
+      { ...RECORD, date: '' },
+      { ...RECORD, date: 20260801 },
+      { ...RECORD, date: new Date('2026-08-01') },
+      { ...RECORD, type: null },
+    ]) {
+      expectDbError(
+        () => aadBoundFields('transactions', SPEC, broken),
+        'record/invalid-bound-field',
+      );
+    }
+  });
+
+  it('binds nothing for a table with no indexes', () => {
+    expect(
+      aadBoundFields(
+        'categories',
+        TABLE_ALLOWLIST.categories as EncryptedTableSpec,
+        { id: 'cat-1', name: 'Alimentari' },
+      ),
+    ).toEqual([]);
   });
 });
 

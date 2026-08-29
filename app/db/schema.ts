@@ -30,6 +30,24 @@
  * type six months from now without a matching allowlist entry fails the write
  * loudly instead of quietly leaking.
  *
+ * ## Plaintext is not the same as unauthenticated
+ *
+ * A plaintext-indexed column is readable by anyone with the database file; that
+ * is the price of a range query and the `plaintextRationale` argues it case by
+ * case. It does **not** follow that the column may be *rewritten* by anyone with
+ * the database file. Issue #51: `date` and `type` were plaintext and outside the
+ * AES-GCM authenticated envelope, so editing them directly in IndexedDB produced
+ * a row that decrypted cleanly — a flipped `type` silently moved money between
+ * the cash and electronic ledgers, a rewritten `date` moved it between months,
+ * and the auth tag still verified.
+ *
+ * So every secondary index on an encrypted table must carry an
+ * {@link PlaintextBinding} — `{ aad: 'bound' }` or `{ aad: 'unbound' }` with a
+ * written rationale. There is deliberately **no default**: adding an index
+ * without deciding fails {@link assertValidAllowlist} with
+ * `schema/unbound-index`. The bug existed because nothing made the question
+ * mandatory; this is what makes it mandatory.
+ *
  * Pure TypeScript: this module knows nothing about Dexie or Web Crypto. It is
  * the contract both of them are checked against.
  */
@@ -60,6 +78,24 @@ export interface EncryptedFieldSpec {
   readonly cents?: boolean;
 }
 
+/**
+ * Whether a plaintext-indexed column is authenticated with the record.
+ *
+ * - `bound` — the column's value goes into the AES-GCM additional authenticated
+ *   data, so rewriting it in the database makes the row fail authentication.
+ *   The cost is that changing it requires re-encrypting the record, which the
+ *   middleware does on every write anyway.
+ * - `unbound` — the column may be rewritten without detection, and must say in
+ *   `rationale` why that is acceptable. The bar is high: it is acceptable only
+ *   for a column that carries no meaning a wrong value could distort — a purely
+ *   derived cache, say. If in doubt, bind it.
+ *
+ * There is no third option and no default. See §Fail closed above.
+ */
+export type PlaintextBinding =
+  | { readonly aad: 'bound' }
+  | { readonly aad: 'unbound'; readonly rationale: string };
+
 /** A table whose sensitive fields are encrypted into {@link ENCRYPTED_BLOB_FIELD}. */
 export interface EncryptedTableSpec {
   readonly kind: 'encrypted';
@@ -70,12 +106,21 @@ export interface EncryptedTableSpec {
    * therefore impossible here by construction.
    */
   readonly primaryKey: string;
-  /** Secondary indexes. Every one of these is stored in plaintext. */
+  /**
+   * Secondary indexes. Every one of these is stored in plaintext, and every one
+   * of them must appear in {@link aadBinding}. The array order is also the AAD
+   * order — see {@link aadBoundFieldNames}.
+   */
   readonly indexes: readonly string[];
   /** Sensitive fields, serialized together into the single blob. */
   readonly encrypted: Readonly<Record<string, EncryptedFieldSpec>>;
   /** Why each plaintext field is structural rather than financial content. */
   readonly plaintextRationale: Readonly<Record<string, string>>;
+  /**
+   * One entry per secondary index — mandatory, no default. The primary key is
+   * not listed: it is always bound, as the AAD's `recordId`.
+   */
+  readonly aadBinding: Readonly<Record<string, PlaintextBinding>>;
 }
 
 /** A table that is plaintext by design and bypasses the middleware entirely. */
@@ -136,6 +181,15 @@ export const TABLE_ALLOWLIST = {
       date: 'Calendar day, indexed because TXNS-04 (date-sorted list) and the analytics range queries are range scans IndexedDB must perform on stored keys. Residual disclosure: an attacker with raw database access learns on which days activity happened, but not what any of it was.',
       type: "Structural mode — 'electronic' | 'cash' | 'planned' (TXNS-01..03). Indexed because CASH-01 derives the wallet balance from cash rows and the combined list filters by mode. Residual disclosure: the ratio of cash to electronic rows, but no amount, counterparty or category.",
     },
+    aadBinding: {
+      // Both carry meaning that a wrong value distorts, silently and
+      // permanently, so both are authenticated with the record (#51).
+      // `date` decides which month, quarter and reconciliation window a
+      // transaction lands in (ANLY-01..04, RECN-01..04); `type` decides
+      // whether it counts against the cash wallet or the bank (CASH-01..05).
+      date: { aad: 'bound' },
+      type: { aad: 'bound' },
+    },
   },
 
   /**
@@ -155,6 +209,9 @@ export const TABLE_ALLOWLIST = {
     plaintextRationale: {
       id: 'Client-generated opaque identifier, referenced by transactions. Carries no information about the category.',
     },
+    // No secondary indexes, so nothing to bind beyond the primary key — which
+    // is always bound, as the AAD's recordId.
+    aadBinding: {},
   },
 } as const satisfies TableAllowlist;
 
@@ -278,7 +335,78 @@ export function assertValidAllowlist(allowlist: TableAllowlist): void {
         );
       }
     }
+
+    assertEveryIndexDeclaresItsBinding(table, spec);
   }
+}
+
+/**
+ * Every secondary index must state whether it is bound into the record's AAD.
+ *
+ * This is the durable half of the #51 fix. The defect was not that someone
+ * chose wrongly — nobody chose at all, because an index could be added without
+ * the question ever being asked. Here it cannot: a new index with no
+ * {@link PlaintextBinding} fails at construction time with
+ * `schema/unbound-index`, and choosing `unbound` costs a written rationale.
+ *
+ * @throws {DbEncryptionError} `schema/unbound-index` or
+ * `schema/invalid-allowlist`.
+ */
+function assertEveryIndexDeclaresItsBinding(
+  table: string,
+  spec: EncryptedTableSpec,
+): void {
+  for (const index of spec.indexes) {
+    const binding = spec.aadBinding[index];
+    if (binding === undefined) {
+      throw new DbEncryptionError(
+        'schema/unbound-index',
+        `Table '${table}' indexes '${index}' in plaintext without declaring its AAD binding. Add aadBinding.${index} = { aad: 'bound' }, or { aad: 'unbound', rationale: '…' } if a rewritten value genuinely cannot distort anything.`,
+      );
+    }
+    if (binding.aad === 'bound') continue;
+    if (binding.aad !== 'unbound') {
+      throw invalidAllowlist(
+        `Table '${table}' declares an unknown AAD binding for '${index}'; use 'bound' or 'unbound'`,
+      );
+    }
+    if (
+      typeof binding.rationale !== 'string' ||
+      binding.rationale.length === 0
+    ) {
+      throw invalidAllowlist(
+        `Table '${table}' leaves '${index}' outside the authenticated envelope without saying why a rewritten value is harmless`,
+      );
+    }
+  }
+
+  for (const field of Object.keys(spec.aadBinding)) {
+    if (field === spec.primaryKey) {
+      throw invalidAllowlist(
+        `Table '${table}' declares an AAD binding for its primary key '${field}', which is always bound as the record id`,
+      );
+    }
+    if (!spec.indexes.includes(field)) {
+      throw invalidAllowlist(
+        `Table '${table}' declares an AAD binding for '${field}', which is not one of its indexes`,
+      );
+    }
+  }
+}
+
+/**
+ * The bound columns of a table, in AAD order.
+ *
+ * The order comes from `spec.indexes`, so it is a property of the allowlist and
+ * not of any call site. Writers and readers both go through this function, which
+ * is what makes "the same fields in the same order, forever" a structural fact
+ * rather than a convention two code paths have to keep agreeing on — supply them
+ * in a different order and the AAD differs and nothing decrypts.
+ */
+export function aadBoundFieldNames(spec: EncryptedTableSpec): string[] {
+  return spec.indexes.filter(
+    (field) => spec.aadBinding[field]?.aad === 'bound',
+  );
 }
 
 /**

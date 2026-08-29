@@ -32,8 +32,10 @@
  * Pure TypeScript. No Dexie, no React, no Web Crypto.
  */
 
+import type { BoundField } from '../crypto/record-cipher';
 import { DbEncryptionError } from './db-error';
 import {
+  aadBoundFieldNames,
   ENCRYPTED_BLOB_FIELD,
   type EncryptedTableSpec,
   type TableSpec,
@@ -94,6 +96,50 @@ export function plaintextProjection(
     }
   }
   return projection;
+}
+
+/**
+ * The plaintext columns bound into the record's AAD, in allowlist order.
+ *
+ * ## Canonicalisation: there is none, and that is the point
+ *
+ * A bound value is bound **exactly as IndexedDB stores it** — the same string,
+ * byte for byte, on the write that seals the record and on the read that opens
+ * it. Nothing is normalised, reformatted, lower-cased, parsed or re-serialized
+ * on the way past. Canonicalisation is where a binding like this rots: a writer
+ * that emits `2026-08-01` and a reader that emits `2026-8-1`, or a `Date` that
+ * round-trips through a different timezone, produce different AAD and turn every
+ * record in the vault into a decryption failure. The only encoding guaranteed
+ * to agree with itself forever is the stored value itself.
+ *
+ * Which is why a bound column **must be a non-empty string**. A number would
+ * need a decimal encoding, and every decimal encoding of a JavaScript number is
+ * a judgement call that a later refactor can make differently (and, for money,
+ * a float that CLAUDE.md forbids outright). So a non-string bound value is
+ * rejected rather than stringified: a future numeric index has to decide on its
+ * stored string form — `date` is already `YYYY-MM-DD` and `type` is already an
+ * enum name — before it can be bound.
+ *
+ * Both the write path and the read path call this one function, so the values
+ * and their order cannot diverge between them.
+ *
+ * @throws {DbEncryptionError} `record/invalid-bound-field`.
+ */
+export function aadBoundFields(
+  table: string,
+  spec: EncryptedTableSpec,
+  source: Record<string, unknown>,
+): BoundField[] {
+  return aadBoundFieldNames(spec).map((name) => {
+    const value = source[name];
+    if (typeof value !== 'string' || value.length === 0) {
+      throw new DbEncryptionError(
+        'record/invalid-bound-field',
+        `Field '${name}' on table '${table}' is authenticated with the record and must be a non-empty string`,
+      );
+    }
+    return { name, value };
+  });
 }
 
 function assertCents(table: string, field: string, value: unknown): void {

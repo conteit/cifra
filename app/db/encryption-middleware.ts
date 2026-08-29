@@ -47,6 +47,23 @@
  * - `openCursor` — **rejected** for value-bearing cursors on encrypted tables;
  *   see below.
  *
+ * ## Authenticated plaintext columns
+ *
+ * A row's plaintext-indexed columns are not encrypted — IndexedDB has to
+ * range-query them — but the ones the allowlist marks `{ aad: 'bound' }` are
+ * **authenticated**: their values go into the AES-GCM AAD alongside the table
+ * and the record id. `encryptValue` reads them from the value being written and
+ * `decryptValue` rebuilds them from the row as stored, so a `date` or `type`
+ * rewritten directly in the database yields a different AAD and the read fails
+ * with `record/corrupt` (#51).
+ *
+ * A consequence worth stating: changing a bound column means re-encrypting the
+ * record, not just re-indexing it. That comes free here because every write is
+ * a whole-value `put` — `Table.update()` and `Collection.modify()` read, modify
+ * and write the full value — so the encrypted blob is always re-emitted from
+ * the same object the new column value came from. Exactly the property the
+ * primary-key-change path already relied on.
+ *
  * ## Why `openCursor` fails closed
  *
  * A `DBCoreCursor` exposes `value` as a *synchronous* property that Dexie reads
@@ -99,6 +116,7 @@ import {
 } from '../crypto/record-cipher';
 import { DbEncryptionError } from './db-error';
 import {
+  aadBoundFields,
   assertKnownFields,
   decodeSensitiveFields,
   encodeSensitiveFields,
@@ -292,11 +310,18 @@ async function encryptValue(
   assertKnownFields(table, spec, value);
   const recordId = requireRecordId(table, spec, value, explicitKey);
 
+  // Read from the value being written, so a `date` or `type` that changed is
+  // sealed with its new value. Every write is a full re-encryption — Dexie's
+  // update()/modify() read-modify-write into a whole-value put — so a bound
+  // column can never be re-indexed without the ciphertext following it.
+  const boundFields = aadBoundFields(table, spec, value);
+
   const plaintext = encodeSensitiveFields(table, spec, value);
   try {
     const envelope = await encryptRecord(dataKey, plaintext, {
       table,
       recordId,
+      boundFields,
     });
     return {
       ...plaintextProjection(spec, value),
@@ -350,9 +375,30 @@ async function decryptValue(
     );
   }
 
+  // Rebuilt from the row as it sits in the database. A `date` or `type` edited
+  // behind the middleware's back therefore produces a different AAD than the
+  // one the record was sealed with, and the tag check fails (#51).
+  let boundFields: ReturnType<typeof aadBoundFields>;
+  try {
+    boundFields = aadBoundFields(table, spec, stored);
+  } catch (cause) {
+    // On the read path a bound column that is missing or the wrong type is not
+    // a caller mistake — it is a damaged row, so it joins the corruption
+    // taxonomy rather than reporting a write-time error code.
+    throw new DbEncryptionError(
+      'record/corrupt',
+      `Stored row '${recordId}' in table '${table}' is missing an authenticated plaintext field`,
+      cause,
+    );
+  }
+
   let payload: Uint8Array;
   try {
-    payload = await decryptRecord(dataKey, envelope, { table, recordId });
+    payload = await decryptRecord(dataKey, envelope, {
+      table,
+      recordId,
+      boundFields,
+    });
   } catch (cause) {
     const detail = cause instanceof RecordCipherError ? ` (${cause.code})` : '';
     throw new DbEncryptionError(
