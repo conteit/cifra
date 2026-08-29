@@ -12,13 +12,32 @@ import {
 } from '../../../app/crypto/kdf';
 
 /**
- * Reduced-cost parameters for tests that only exercise plumbing (validation,
- * key shape, determinism). Real cost is covered by the production-parameter
- * test below and by the 64 MiB known-answer vectors.
+ * The cheapest parameters the production gate accepts — exactly the strength
+ * floor (OWASP's weakest Argon2id configuration, m = 19 MiB, t = 2, p = 1),
+ * ~20 ms per derivation on an M4. Used by every test that only exercises
+ * plumbing (validation, key shape, determinism) so those tests still go through
+ * the same gate production does. Real cost is covered by the
+ * production-parameter test below and by the 64 MiB known-answer vectors.
  */
 const CHEAP_PARAMS: Argon2idParams = {
-  memorySizeKib: 256,
+  memorySizeKib: 19_456,
   iterations: 2,
+  parallelism: 1,
+};
+
+/**
+ * Parameters sitting exactly *on* each ceiling. Only ever handed to
+ * `assertArgon2idParams`, never derived: at 1048576 KiB-passes each of these
+ * costs ~0.6 s on an M4, which is the whole reason the ceiling is where it is.
+ */
+const ARGON2ID_MEMORY_CEILING_PARAMS: Argon2idParams = {
+  memorySizeKib: 262_144,
+  iterations: 1,
+  parallelism: 1,
+};
+const ARGON2ID_COST_CEILING_PARAMS: Argon2idParams = {
+  memorySizeKib: 65_536,
+  iterations: 16,
   parallelism: 1,
 };
 
@@ -122,7 +141,10 @@ describe('assertArgon2idParams', () => {
       'absurd parallelism',
       { memorySizeKib: 65536, iterations: 3, parallelism: 4096 },
     ],
-    ['memory below 8*p', { memorySizeKib: 8, iterations: 3, parallelism: 2 }],
+    [
+      'memory far below the strength floor',
+      { memorySizeKib: 8, iterations: 3, parallelism: 2 },
+    ],
     [
       'absurd memory',
       { memorySizeKib: 8_388_608, iterations: 3, parallelism: 1 },
@@ -138,6 +160,158 @@ describe('assertArgon2idParams', () => {
     } catch (error) {
       expect((error as KdfError).code).toBe('params/invalid');
     }
+  });
+});
+
+/**
+ * The security bounds, one uniquely-attributable case per bound.
+ *
+ * Each rejected case sits *one step* outside exactly one bound and comfortably
+ * inside every other, so removing any single bound from `app/crypto/kdf.ts`
+ * makes exactly the case named for it fail. The numbers are written out here
+ * rather than imported from the module on purpose: importing the constant would
+ * make the test move with the value it is supposed to pin.
+ *
+ * Bounds are security bounds, not tuning knobs — see the block comments on
+ * `ARGON2ID_COST_CEILING_KIB_PASSES` and `ARGON2ID_STRENGTH_FLOOR`. Changing
+ * one is a security decision that needs a fresh measurement.
+ */
+describe('assertArgon2idParams — security bounds', () => {
+  it.each<[string, Argon2idParams]>([
+    ['the strength floor itself (19 MiB x 2)', CHEAP_PARAMS],
+    [
+      'the OWASP alternative configuration (46 MiB x 1)',
+      { memorySizeKib: 47_104, iterations: 1, parallelism: 1 },
+    ],
+    ['the memory ceiling at t=1', ARGON2ID_MEMORY_CEILING_PARAMS],
+    ['the cost ceiling split as 64 MiB x 16', ARGON2ID_COST_CEILING_PARAMS],
+    [
+      'the cost ceiling split as 256 MiB x 4',
+      { memorySizeKib: 262_144, iterations: 4, parallelism: 1 },
+    ],
+    [
+      'a plausible post-#29 default (64 MiB x 8)',
+      { memorySizeKib: 65_536, iterations: 8, parallelism: 1 },
+    ],
+    [
+      'a plausible post-#29 default (128 MiB x 4)',
+      { memorySizeKib: 131_072, iterations: 4, parallelism: 1 },
+    ],
+  ])('accepts %s', (_label, value) => {
+    expect(() => assertArgon2idParams(value)).not.toThrow();
+  });
+
+  it.each<[string, Argon2idParams]>([
+    // Only the memory ceiling rejects this: 262145 KiB-passes is far under the
+    // cost ceiling and t/p are in range.
+    [
+      'memory one KiB over the 256 MiB ceiling',
+      { memorySizeKib: 262_145, iterations: 1, parallelism: 1 },
+    ],
+    // Only the iteration ceiling rejects this: 330752 KiB-passes is far under
+    // the cost ceiling and the memory is mid-range.
+    [
+      'iterations one pass over the 16-pass ceiling',
+      { memorySizeKib: 19_456, iterations: 17, parallelism: 1 },
+    ],
+    // Only the cost ceiling rejects this: memory sits exactly *at* its ceiling
+    // and iterations well under theirs, but 2097152 KiB-passes is 2x the cost
+    // ceiling — ~1.1 s measured. This is the case per-parameter caps miss.
+    [
+      'memory at its ceiling combined with 8 passes',
+      { memorySizeKib: 262_144, iterations: 8, parallelism: 1 },
+    ],
+    // Only the memory floor rejects this: 77820 KiB-passes clears the cost
+    // floor twice over.
+    [
+      'memory one KiB under the 19 MiB floor',
+      { memorySizeKib: 19_455, iterations: 4, parallelism: 1 },
+    ],
+    // Only the cost floor rejects this: 32 MiB clears the memory floor, but a
+    // single pass over it is 32768 KiB-passes, under the 38912 floor.
+    [
+      'memory above the floor but a single pass under the cost floor',
+      { memorySizeKib: 32_768, iterations: 1, parallelism: 1 },
+    ],
+    // The parameters from the Sprint 01 review finding (S-4): 36.5 s measured.
+    [
+      'the 1 GiB x 64-pass parameters the old bounds admitted',
+      { memorySizeKib: 1_048_576, iterations: 64, parallelism: 1 },
+    ],
+  ])('rejects %s', (_label, value) => {
+    expect(() => assertArgon2idParams(value)).toThrow(KdfError);
+    try {
+      assertArgon2idParams(value);
+    } catch (error) {
+      expect((error as KdfError).code).toBe('params/invalid');
+    }
+  });
+
+  it('leaves headroom above the current default for #29 to raise iterations', () => {
+    // The ceiling must not be a bound #29 immediately has to raise. Assert the
+    // slack explicitly so shrinking the ceiling is a visible decision.
+    const defaultCost =
+      ARGON2ID_DEFAULT_PARAMS.memorySizeKib *
+      ARGON2ID_DEFAULT_PARAMS.iterations;
+    const ceilingCost =
+      ARGON2ID_COST_CEILING_PARAMS.memorySizeKib *
+      ARGON2ID_COST_CEILING_PARAMS.iterations;
+    expect(ceilingCost / defaultCost).toBeGreaterThanOrEqual(5);
+
+    // Raising only the iteration count, the parameter #29 is expected to move,
+    // must stay inside the ceiling up to at least 5x today's value.
+    expect(() =>
+      assertArgon2idParams({
+        ...ARGON2ID_DEFAULT_PARAMS,
+        iterations: ARGON2ID_DEFAULT_PARAMS.iterations * 5,
+      }),
+    ).not.toThrow();
+  });
+
+  it('keeps the defaults comfortably inside every bound', () => {
+    expect(() => assertArgon2idParams(ARGON2ID_DEFAULT_PARAMS)).not.toThrow();
+    expect(ARGON2ID_DEFAULT_PARAMS.memorySizeKib).toBeGreaterThanOrEqual(
+      19_456,
+    );
+    expect(ARGON2ID_DEFAULT_PARAMS.memorySizeKib).toBeLessThanOrEqual(262_144);
+    expect(ARGON2ID_DEFAULT_PARAMS.iterations).toBeLessThanOrEqual(16);
+  });
+});
+
+describe('deriveMasterKey — parameters are bounded before any derivation', () => {
+  /**
+   * The point of the ceiling is that rejection is *free*. Deriving these
+   * parameters measures 36.5 s on an M4 (Sprint 01 finding S-4); rejecting them
+   * must not begin that work at all.
+   *
+   * The companion test in `kdf-param-bounds.test.ts` asserts the same property
+   * structurally, by proving hash-wasm's `argon2id` is never called. This one
+   * asserts it observably, without a mock: if the ceiling were removed, or the
+   * check moved after the digest, the elapsed time here would be five orders of
+   * magnitude larger.
+   */
+  it('rejects 1 GiB x 64 passes in microseconds, not the 36 s it would cost', async () => {
+    const start = performance.now();
+    await expect(
+      deriveMasterKey('correct horse', SALT_A, {
+        memorySizeKib: 1_048_576,
+        iterations: 64,
+        parallelism: 1,
+      }),
+    ).rejects.toMatchObject({ code: 'params/invalid' });
+    expect(performance.now() - start).toBeLessThan(250);
+  });
+
+  it('rejects params that are merely too weak just as cheaply', async () => {
+    const start = performance.now();
+    await expect(
+      deriveMasterKey('correct horse', SALT_A, {
+        memorySizeKib: 8,
+        iterations: 1,
+        parallelism: 1,
+      }),
+    ).rejects.toMatchObject({ code: 'params/invalid' });
+    expect(performance.now() - start).toBeLessThan(250);
   });
 });
 
@@ -282,10 +456,12 @@ describe('deriveMasterKey — determinism', () => {
 
   it('unlocks a vault created with older stored params', async () => {
     // A vault created under legacy params must still unlock when those params
-    // are passed back in, even though the defaults have since moved on.
+    // are passed back in, even though the defaults have since moved on. Legacy
+    // params must still clear the strength floor — which is exactly why the
+    // floor was set now, before any vault exists.
     const legacy: Argon2idParams = {
-      memorySizeKib: 256,
-      iterations: 1,
+      memorySizeKib: 19_456,
+      iterations: 3,
       parallelism: 1,
     };
     const atCreation = await deriveMasterKey('correct horse', SALT_A, legacy);
@@ -345,6 +521,10 @@ describe('deriveMasterKey — determinism', () => {
  * documented test-only wrapper over that exact internal function, so a
  * regression in the digest is caught here while the public API keeps its
  * non-extractability guarantee intact.
+ *
+ * These vectors are deliberately weak (m = 256 KiB, t = 1) — they pin the
+ * *algorithm*, not this app's policy — so `argon2idDigestForVectorTests`
+ * bypasses the strength floor. It still applies the cost ceiling.
  *
  * Vectors are the Argon2 reference implementation's own test suite
  * (P-H-C/phc-winner-argon2, `src/test.c`, Argon2id block, version 0x13,
