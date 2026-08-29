@@ -20,6 +20,10 @@ export default defineConfig({
           name: 'unit',
           include: ['test/unit/**/*.test.ts', 'app/**/*.test.ts'],
           environment: 'node',
+          // Dexie captures `globalThis.indexedDB` at module-evaluation time and
+          // ESM imports are hoisted, so `fake-indexeddb` has to be installed
+          // before the test module graph loads. See test/setup/indexeddb.ts.
+          setupFiles: ['test/setup/indexeddb.ts'],
         },
       },
       // `stories` runs every Storybook story as a smoke test in a real browser.
