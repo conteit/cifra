@@ -16,6 +16,10 @@
     "paths": {
       "~/*": ["./app/*"]
     },
+    // For vite.config.ts's import of app/services/auth/auth-emulator.ts, which
+    // must carry an explicit extension for Vite's native config loader. Safe
+    // with noEmit: nothing here is compiled to JS by tsc.
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,
