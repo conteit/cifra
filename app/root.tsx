@@ -9,6 +9,8 @@ import {
 } from 'react-router';
 
 import type { Route } from './+types/root';
+import { DEFAULT_LOCALE } from './i18n';
+import { useDocumentLocale } from './stores/use-locale';
 import { useSessionBootstrap } from './stores/use-session';
 import './app.css';
 
@@ -70,9 +72,19 @@ if (
 
 export function Layout({ children }: { children: React.ReactNode }) {
   useRegisterServiceWorker();
+  // FOUN-07: `<html lang>` must name the language the page is actually in, or
+  // a screen reader pronounces Italian copy with English phonetics. See the
+  // hook for why the attribute is written imperatively rather than rendered.
+  useDocumentLocale();
 
   return (
-    <html lang="en">
+    // The prerendered value, and only that. `ssr: false` means this file is
+    // rendered to HTML once at build time, in Node, and every visitor is
+    // served the same bytes — so this attribute cannot carry a detected
+    // locale, and rendering one here would only be a hydration mismatch.
+    // `useDocumentLocale` corrects the live document; this keeps the static
+    // shell honest about what it is (English, and wordless).
+    <html lang={DEFAULT_LOCALE}>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />

@@ -1,7 +1,7 @@
 import { Outlet } from 'react-router';
 
-import { en } from '../i18n/en';
 import { AppShell } from '../shell';
+import { useStrings } from '../stores/use-locale';
 
 /**
  * The layout route every page mounts inside.
@@ -13,15 +13,20 @@ import { AppShell } from '../shell';
  * session), and #10's lock screen is a `dismissible={false}` Modal this route
  * will render next to `<AppShell>` once there is a vault to lock.
  *
- * The locale is pinned to English here. FOUN-07's browser auto-detection and
- * the language preference have no runtime yet — nothing in the app selects a
- * locale today (see the follow-up issue linked from the PR for #3). The shell
- * itself is locale-free: swapping this one import for a detected locale is the
- * whole change.
+ * The shell is locale-free — it takes every string as a prop — so the locale
+ * lives here, one layer up, and arrives from the store
+ * (`app/stores/locale.ts`). A route reads state from a store; it does not
+ * import a string table. `test/unit/locale-boundary.test.ts` enforces that by
+ * walking the real import graph, because the comment this one replaced claimed
+ * "swapping this one import for a detected locale is the whole change" and
+ * that was false: detection needed a resolver, a store, a React binding, and a
+ * runtime `<html lang>` (FOUN-07 has four seams, not one — see #47).
  */
 export default function AppLayout() {
+  const strings = useStrings();
+
   return (
-    <AppShell strings={en}>
+    <AppShell strings={strings}>
       <Outlet />
     </AppShell>
   );
