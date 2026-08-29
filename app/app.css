@@ -28,15 +28,28 @@
   --ramp-ink-900: #1c1c1a;
   --ramp-ink-700: #3a3a37;
   --ramp-ink-500: #6b6860;
-  --ramp-sepia-500: #8b7355;
+  /* Sepia sits at the same OKLCH lightness as ink-500 (L≈0.516) and is told
+     apart by hue, not by weight. It was #8b7355 (L 0.571) until issue #45:
+     that reached only 3.67:1 on surface-inset, below the AA floor for the
+     8.5px label sizes `text-meta` is used at. See D16. */
+  --ramp-sepia-500: #7b6346;
 
   /* Pigments. */
   --ramp-green-700: #2d5a27;
+  /* Non-text pigment: bars, chart series and fills only — never a text
+     colour. It clears the 3:1 WCAG 1.4.11 graphic bar on every surface but
+     not the 4.5:1 text bar. See D17. */
   --ramp-green-500: #4a7c43;
   --ramp-green-100: #d4e8d1;
-  --ramp-red-600: #c4382a;
+  /* Was #c4382a until issue #45 — 4.35:1 on surface-inset, just under the AA
+     floor. Darkened by 0.014 in OKLCH lightness with hue and chroma held; the
+     move is imperceptible next to the old swatch and buys 4.62:1. */
+  --ramp-red-600: #bf3326;
   --ramp-red-50: #fdecea;
-  --ramp-amber-600: #b8860b;
+  /* Was #b8860b (CSS darkgoldenrod, L 0.652) until issue #45 — 2.87:1 on the
+     page. Darkened to L 0.516 with the hue held at 81°, which is as much
+     chroma as sRGB carries at that lightness. See D16. */
+  --ramp-amber-600: #876000;
   --ramp-amber-50: #fff3cc;
   --ramp-violet-700: #5b3a8c;
   --ramp-violet-50: #f0e8f8;
@@ -53,11 +66,13 @@
   --ramp-cat-dining-wash: #f5e6d8;
   --ramp-cat-subscriptions: #4a3580;
   --ramp-cat-subscriptions-wash: #e8e0f4;
-  --ramp-cat-health: #c4382a;
+  /* Same pigment as --ramp-red-600, moved with it in issue #45. */
+  --ramp-cat-health: #bf3326;
   --ramp-cat-health-wash: #fdecea;
   --ramp-cat-sport: #1b5e20;
   --ramp-cat-sport-wash: #c8e6c9;
-  --ramp-cat-utilities: #b8860b;
+  /* Same pigment as --ramp-amber-600, moved with it in issue #45. */
+  --ramp-cat-utilities: #876000;
   --ramp-cat-utilities-wash: #fff3cc;
   --ramp-cat-bar: #5d3a1a;
   --ramp-cat-bar-wash: #f0e4d8;
@@ -153,7 +168,14 @@
   --color-current: currentcolor;
   --color-inherit: inherit;
 
-  /* Surfaces, from the page up. */
+  /* Surfaces, from the page up.
+
+     `page`, `card` and `inset` are text surfaces: any text token may sit on
+     them and every one of them clears WCAG AA there. `track` is a *graphic*
+     surface — progress tracks and the secondary button's hover fill — and
+     carries only `text-primary` / `text-secondary`. `inverse` carries
+     `text-inverse` and the accent washes. The permitted pairs are enumerated
+     and enforced by `test/unit/palette-contrast.test.ts` (D16). */
   --color-surface-page: var(--ramp-cream-100);
   --color-surface-card: var(--ramp-cream-50);
   --color-surface-inset: var(--ramp-cream-200);
@@ -167,7 +189,11 @@
   --color-text-meta: var(--ramp-sepia-500);
   --color-text-inverse: var(--ramp-cream-100);
 
-  /* Money, by intent. `-surface` is the wash the accent sits on. */
+  /* Money, by intent. `-surface` is the wash the accent sits on.
+
+     `income-strong` is the one non-text member: bars, chart series and fills.
+     Everything else here is a text colour and clears AA on `page`, `card`,
+     `inset` and its own wash (D17). */
   --color-accent-income: var(--ramp-green-700);
   --color-accent-income-strong: var(--ramp-green-500);
   --color-accent-income-surface: var(--ramp-green-100);

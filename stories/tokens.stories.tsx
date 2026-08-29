@@ -125,7 +125,10 @@ const money: Swatch[] = [
   {
     token: '--color-accent-income-strong',
     ramp: '--ramp-green-500',
-    use: { en: 'Hover, secondary income', it: 'Hover, entrate secondarie' },
+    use: {
+      en: 'Bars and fills — never text',
+      it: 'Barre e riempimenti — mai testo',
+    },
   },
   {
     token: '--color-accent-income-surface',
@@ -832,33 +835,12 @@ const meta = {
   component: Tokens,
   parameters: {
     layout: 'fullscreen',
-    a11y: {
-      // NARROW, DOCUMENTED EXEMPTION — scoped to this file only.
-      //
-      // Issue #2 turned `a11y.test` from 'todo' to 'error', so axe violations
-      // now fail `verify`. That immediately surfaced a real defect in the
-      // Editorial Italiana palette, measured by axe against live pixels:
-      //
-      //   --color-text-meta      #8b7355 on surface-card #fdfaf4 → 4.30:1
-      //   --color-text-meta      #8b7355 on surface-page #f5f0e8 → 3.95:1
-      //   --color-accent-planned #b8860b on surface-card #fdfaf4 → 3.12:1
-      //   --color-accent-planned #b8860b on its own wash #fff3cc → 2.93:1
-      //
-      // All four are below the 4.5:1 WCAG AA threshold for the sizes the type
-      // scale uses them at. The finding is about the *pigments*, not about this
-      // sheet, and repainting the palette is a design decision that belongs to
-      // whoever owns the token system — so it is filed as a follow-up rather
-      // than fixed here, and this reference sheet (whose whole job is to show
-      // every token, including the failing ones, at their real sizes) is
-      // exempted from the colour-contrast rule until it lands.
-      //
-      // Only `color-contrast` is disabled, and only here. Every component story
-      // in `stories/*.stories.tsx` is checked at full strength, and none of the
-      // primitives shipped by #2 uses either failing token.
-      config: {
-        rules: [{ id: 'color-contrast', enabled: false }],
-      },
-    },
+    // No a11y exemption. Issue #45 repainted `--ramp-sepia-500` and
+    // `--ramp-amber-600` so every token this sheet paints as text clears WCAG
+    // AA against the surface it sits on, and the narrow `color-contrast`
+    // exemption #2 added here is gone — the reference sheet is checked at full
+    // strength like every other story. `test/unit/palette-contrast.test.ts`
+    // holds the same line without a browser.
   },
   // Locale comes from the toolbar global so every story is bilingual by
   // construction; the explicit *Italian stories pin it for regression cover.
