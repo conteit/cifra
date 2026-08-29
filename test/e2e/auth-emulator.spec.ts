@@ -53,16 +53,18 @@ import { SESSION_TEST_HANDLE } from '../../app/stores/session-test-handle';
 /**
  * Retries for **this file only**, deliberately not for the suite.
  *
- * Measured over 18 consecutive local runs of this spec, 17 passed and one failed
- * at the relay-readiness gate below: the helper iframe's `gapi` bootstrap from
- * apis.google.com never completed. Nothing in this repo can wait that stall out
- * — it is a third-party fetch inside a third-party bridge — and everything on
- * our side of it is already gated rather than slept on.
+ * Every wait here is on an observable condition rather than a sleep, and the
+ * relay-readiness gate below is sized for a cold browser profile fetching the
+ * gapi bootstrap over the public internet — several sequential round trips to
+ * apis.google.com before the bridge exists. What is left is the possibility of
+ * that third-party fetch simply stalling, which nothing on our side can wait
+ * out: measured over ~18 consecutive local runs, once.
  *
  * So the flake is retried where it lives instead of turning on `retries` in
  * `playwright.config.ts`, which would let the deterministic specs (the shell,
  * the offline contract) retry too and quietly hide a real regression. A retried
- * run is reported as flaky, so it stays visible.
+ * run is reported as flaky, so it stays visible — and #71 tracks removing the
+ * dependency that makes it necessary.
  */
 test.describe.configure({ retries: 2 });
 
@@ -136,8 +138,8 @@ test('signs in and out through the Firebase Auth emulator', async ({
 }) => {
   // Playwright's 30s default would expire inside the sign-in wait below rather
   // than after it, reporting a test timeout instead of the assertion that
-  // actually failed.
-  test.setTimeout(120_000);
+  // actually failed. Sized to clear every wait in this test end to end.
+  test.setTimeout(180_000);
 
   await page.goto('/');
 
@@ -202,9 +204,14 @@ test('signs in and out through the Firebase Auth emulator', async ({
           }
           return false;
         }),
-      // Short enough that a stalled gapi bootstrap fails fast and the file's
-      // retry gets a fresh browser context, rather than burning the budget.
-      { timeout: 20_000 },
+      // Sized for a cold profile on CI, not for a warm laptop. Building the
+      // bridge is several sequential fetches from apis.google.com — the SDK's
+      // own gapi, then the iframe document, then the iframe's gapi, then
+      // `gapi.load('gapi.iframes')` — and at 20s the first attempt of the very
+      // first CI run timed out here while the retry (warm) passed in seconds.
+      // A gate that only passes on a warm cache is a gate that reports network
+      // latency as a product failure.
+      { timeout: 60_000 },
     )
     .toBe(true);
 
