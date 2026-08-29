@@ -39,7 +39,13 @@ const preview: Preview = {
   },
   parameters: {
     a11y: {
-      test: 'todo',
+      // 'error', not 'todo': accessibility violations fail `test:stories`, and
+      // therefore `verify`, and therefore CI. Issue #2 ships the base
+      // components with "stories cover all states with a11y checks" as an
+      // acceptance bullet — a check that only reports is not a check. Any rule
+      // that genuinely cannot hold must be disabled at the story that needs it,
+      // with a written reason, never here.
+      test: 'error',
     },
     viewport: {
       options: viewports,
