@@ -4,11 +4,12 @@ import { reactRouter } from '@react-router/dev/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig, type Plugin } from 'vite';
 import { type VitePluginPWAAPI, VitePWA } from 'vite-plugin-pwa';
-
-// Explicit `.ts`: this is one of the few specifiers Vite's config loader has to
-// resolve itself, and its forthcoming native loader cannot infer the extension.
-// `allowImportingTsExtensions` in tsconfig.json exists for this import and no
-// other — which is also why `auth-emulator.ts` itself imports nothing.
+// The three app imports below spell out `.ts`: they are the few specifiers
+// Vite's config loader has to resolve itself, and its forthcoming native loader
+// cannot infer the extension. `allowImportingTsExtensions` in tsconfig.json
+// exists for these imports and no others — which is also why each of the three
+// modules they name deliberately imports nothing itself.
+import { DB_TEST_HANDLE } from './app/db/db-test-handle.ts';
 import {
   AUTH_EMULATOR_BUILD_MARKER,
   AUTH_EMULATOR_CONFIG,
@@ -134,18 +135,25 @@ function assertNavigateFallbackIsPrecached(swPath: string): void {
 }
 
 /**
- * Every string that only exists in the tree because of the Auth emulator path,
- * including the `window` handle the e2e sign-in spec drives the store through.
+ * Every string that exists in the tree only because a build is a development or
+ * emulator build: the Auth emulator path, and the two `window` handles the e2e
+ * specs drive the app through — the session store (#44) and the db layer (#42).
  *
  * They are imported from the app's own modules rather than retyped here, so a
  * rename cannot leave the guard checking for a token nothing emits any more —
  * which is the failure mode that makes a negative assertion quietly vacuous.
+ *
+ * The list is one list on purpose. Both handles are gated by the *same*
+ * `import.meta.env.MODE` comparison and both are asserted in both directions by
+ * the same plugin below, so splitting them would create a second guard to keep
+ * in step with the first for no gain.
  */
-const AUTH_EMULATOR_TOKENS: readonly string[] = [
+const EMULATOR_ONLY_TOKENS: readonly string[] = [
   AUTH_EMULATOR_BUILD_MARKER,
   AUTH_EMULATOR_URL,
   AUTH_EMULATOR_CONFIG.projectId,
   SESSION_TEST_HANDLE,
+  DB_TEST_HANDLE,
 ];
 
 /**
@@ -172,6 +180,13 @@ const AUTH_EMULATOR_TOKENS: readonly string[] = [
  * behind it. That chain is four tools deep and none of them promise it in
  * writing, so the outcome is checked instead of trusted.
  *
+ * #42's db test seam rides the same guard, and leans on it harder: the branch it
+ * sits behind in `app/root.tsx` holds a **dynamic import**, so what has to be
+ * deleted is not one assignment but `app/db`, `app/crypto`, Dexie and hash-wasm
+ * — the whole graph behind it. If the fold ever stopped working, production
+ * would ship a debug handle onto the encrypted database *and* a few hundred
+ * kilobytes nothing calls.
+ *
  * Both directions are asserted, because a negative check alone rots into a
  * tautology the moment the tokens stop being emitted for an unrelated reason:
  *
@@ -182,9 +197,9 @@ const AUTH_EMULATOR_TOKENS: readonly string[] = [
  * only point where the mistake is still cheap, rather than shipping and hoping
  * someone opens DevTools.
  */
-function authEmulatorBundleGuard(useEmulator: boolean): Plugin {
+function emulatorBundleGuard(useEmulator: boolean): Plugin {
   return {
-    name: 'cifra:auth-emulator-bundle-guard',
+    name: 'cifra:emulator-bundle-guard',
     apply: 'build',
     writeBundle(options, bundle) {
       // React Router builds two environments; `build/server` is deleted by the
@@ -198,31 +213,34 @@ function authEmulatorBundleGuard(useEmulator: boolean): Plugin {
         .map((output) => (output.type === 'chunk' ? output.code : ''))
         .join('\n');
 
-      const present = AUTH_EMULATOR_TOKENS.filter((token) =>
+      const present = EMULATOR_ONLY_TOKENS.filter((token) =>
         code.includes(token),
       );
-      const absent = AUTH_EMULATOR_TOKENS.filter(
+      const absent = EMULATOR_ONLY_TOKENS.filter(
         (token) => !code.includes(token),
       );
 
       if (!useEmulator && present.length > 0) {
         throw new Error(
-          'Auth emulator guard: a production build must not contain the Firebase Auth ' +
-            `emulator path, but ${CLIENT_OUT_DIR} still mentions ${present.join(', ')}. ` +
-            'Something made the branch in app/services/auth/firebase-auth-port.ts ' +
-            'un-foldable — most likely the `import.meta.env.MODE === …` comparison was ' +
-            'replaced by a value the bundler cannot resolve at build time. Shipping this ' +
-            'would put an emulator code path in front of real users. See issue #44.',
+          'Emulator bundle guard: a production build must not contain the Firebase Auth ' +
+            `emulator path or a test handle, but ${CLIENT_OUT_DIR} still mentions ${present.join(', ')}. ` +
+            'Something made one of the gated branches un-foldable — most likely an ' +
+            '`import.meta.env.MODE === …` comparison in app/services/auth/firebase-auth-port.ts, ' +
+            'app/stores/session-instance.ts or app/root.tsx was replaced by a value the ' +
+            'bundler cannot resolve at build time. Shipping this would put an emulator code ' +
+            'path, or a debug handle onto the encrypted database, in front of real users. ' +
+            'See issues #44 and #42.',
         );
       }
 
       if (useEmulator && absent.length > 0) {
         throw new Error(
-          `Auth emulator guard: a --mode ${AUTH_EMULATOR_MODE} build must contain the ` +
-            `Firebase Auth emulator path, but ${CLIENT_OUT_DIR} is missing ${absent.join(', ')}. ` +
-            'The e2e sign-in spec would fail against a real Firebase project it has no ' +
-            'credentials for, and the production half of this guard would be asserting ' +
-            'nothing. See issue #44.',
+          `Emulator bundle guard: a --mode ${AUTH_EMULATOR_MODE} build must contain the ` +
+            `Firebase Auth emulator path and the e2e test handles, but ${CLIENT_OUT_DIR} is ` +
+            `missing ${absent.join(', ')}. The e2e specs would fail — sign-in against a real ` +
+            'Firebase project it has no credentials for, or db liveness against a handle that ' +
+            'never appears — and the production half of this guard would be asserting nothing. ' +
+            'See issues #44 and #42.',
         );
       }
     },
@@ -279,7 +297,7 @@ export default defineConfig(({ mode }) => {
       // Must stay after VitePWA(): it reaches for that plugin's api, and its
       // `buildApp` wrapper has to sit outside React Router's prerender wrapper.
       pwaAfterSpaPrerender(),
-      authEmulatorBundleGuard(useAuthEmulator),
+      emulatorBundleGuard(useAuthEmulator),
     ],
     resolve: {
       tsconfigPaths: true,

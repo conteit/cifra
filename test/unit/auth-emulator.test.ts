@@ -184,6 +184,10 @@ describe('the production-bundle guard', () => {
       'AUTH_EMULATOR_URL',
       'AUTH_EMULATOR_CONFIG.projectId',
       'SESSION_TEST_HANDLE',
+      // #42's db seam rides the same guard. `test/unit/db/db-test-seam.test.ts`
+      // owns the rest of that handle's gating; it is listed here because this
+      // is the assertion that claims the list is *complete*.
+      'DB_TEST_HANDLE',
     ]) {
       expect(config).toContain(token);
     }
