@@ -28,13 +28,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { MIN_ENVELOPE_LENGTH_BYTES } from '../../../app/crypto/record-cipher';
 import type { CategoryRow, TransactionRow } from '../../../app/db/schema';
 import { ENCRYPTED_BLOB_FIELD } from '../../../app/db/schema';
-import {
-  occurrences,
-  openTestVault,
-  rawDump,
-  scan,
-  type TestVault,
-} from './support';
+import { occurrences, scan } from '../../support/raw-scan';
+import { openTestVault, rawDump, type TestVault } from './support';
 
 /**
  * Distinctive values that could only come from these records. Deliberately not
