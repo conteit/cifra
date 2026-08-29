@@ -57,6 +57,11 @@ describe('Firebase SDK containment', () => {
     'app/services/auth/types.ts',
     'app/services/auth/auth-error.ts',
     'app/services/auth/firebase-config.ts',
+    // #44's emulator constants. They are imported by `vite.config.ts` for the
+    // production-bundle guard as well as by the adapter, so an SDK import here
+    // would pull Firebase into the build config too.
+    'app/services/auth/auth-emulator.ts',
+    'app/stores/session-test-handle.ts',
   ])('%s is free of the Firebase SDK', (entry) => {
     const graph = repoImportGraph(entry);
     expect(packagesMatching(graph, ...FORBIDDEN_PACKAGES)).toEqual([]);
