@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { reactRouter } from '@react-router/dev/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig, type Plugin } from 'vite';
-import { VitePWA, type VitePluginPWAAPI } from 'vite-plugin-pwa';
+import { type VitePluginPWAAPI, VitePWA } from 'vite-plugin-pwa';
 
 // React Router (framework mode) sets per-environment build.outDir via the
 // Vite Builder/Environment API rather than the shared top-level config, so
