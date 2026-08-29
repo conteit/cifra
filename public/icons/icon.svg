@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Cifra">
+  <title>Cifra</title>
+  <!-- Editorial Italiana: cream paper, green ink. The mark is an open C-arc
+       (Cifra) crossed by a diagonal cipher slash. Pure geometry, no raster. -->
+  <rect width="512" height="512" fill="#F5F0E8"/>
+  <rect x="16" y="16" width="480" height="480" fill="none" stroke="#1C1C1A" stroke-opacity="0.12" stroke-width="4"/>
+  <g transform="translate(87.04 87.04)" fill="none" stroke="#2D5A27" stroke-linecap="round">
+    <path d="M278.32 78.49 A141.93 141.93 0 1 0 278.32 259.43" stroke-width="30.41"/>
+    <line x1="98.00" y1="76.71" x2="239.92" y2="261.21" stroke-width="21.29"/>
+  </g>
+</svg>
