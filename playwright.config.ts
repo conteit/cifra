@@ -2,6 +2,11 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from '@playwright/test';
 
+import {
+  AUTH_EMULATOR_PORT,
+  AUTH_EMULATOR_URL,
+} from './app/services/auth/auth-emulator';
+
 /**
  * The port is deliberately **not** Vite's default 4173, and the server is
  * deliberately **never** reused.
@@ -29,6 +34,9 @@ import { defineConfig } from '@playwright/test';
  *      collision — only (1) does — but 4173 is the port every Vite project on
  *      the machine reaches for by default, so moving off it removes the much
  *      larger class of collisions with unrelated projects.
+ *
+ * The same reasoning is applied verbatim to the Firebase Auth emulator below:
+ * it is started by this run or the run fails.
  */
 const PORT = 4318;
 
@@ -37,27 +45,76 @@ const PORT = 4318;
  * would wait two minutes for a server that is listening elsewhere. Cheap
  * enough to check at config load, so the drift can never happen quietly.
  */
-const previewScript: string = JSON.parse(
+const packageJson: { scripts: Record<string, string> } = JSON.parse(
   readFileSync(
     fileURLToPath(new URL('./package.json', import.meta.url)),
     'utf8',
   ),
-).scripts.preview;
+);
 
+const previewScript = packageJson.scripts.preview;
 if (!previewScript.includes(`--port ${PORT}`)) {
   throw new Error(
     `playwright.config.ts expects port ${PORT}, but package.json's preview script is "${previewScript}"`,
   );
 }
 
+/**
+ * Same class of silent drift, one layer down: `firebase.json` owns the port the
+ * emulator binds, `app/services/auth/auth-emulator.ts` owns the port the app
+ * dials, and this file waits on the one it is told about. If those three ever
+ * disagree the suite hangs until the web-server timeout and reports a failure
+ * that looks like "sign-in is broken" rather than "two numbers differ".
+ */
+const firebaseJson: {
+  emulators: Record<string, { port?: number } | unknown>;
+} = JSON.parse(
+  readFileSync(
+    fileURLToPath(new URL('./firebase.json', import.meta.url)),
+    'utf8',
+  ),
+);
+
+const configuredAuthPort = (firebaseJson.emulators.auth as { port?: number })
+  ?.port;
+if (configuredAuthPort !== AUTH_EMULATOR_PORT) {
+  throw new Error(
+    `playwright.config.ts expects the Auth emulator on ${AUTH_EMULATOR_PORT} ` +
+      `(app/services/auth/auth-emulator.ts), but firebase.json binds it to ${configuredAuthPort}.`,
+  );
+}
+
 export default defineConfig({
   testDir: 'test/e2e',
-  webServer: {
-    command: 'npm run build && npm run preview',
-    port: PORT,
-    // Never adopt a server this run did not start. See the note above.
-    reuseExistingServer: false,
-    timeout: 120_000,
-  },
+  webServer: [
+    /**
+     * The Firebase Auth emulator. Started here rather than as a CI-only step so
+     * that a local run and the `e2e` CI job execute the identical thing —
+     * `npm run test:e2e` is the whole contract, on both. `firebase-tools` is a
+     * devDependency and the Auth emulator is a plain Node process (no Java, no
+     * downloads), so `npm ci` is all the setup CI needs.
+     */
+    {
+      command: 'npm run emulators',
+      url: `${AUTH_EMULATOR_URL}/`,
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
+    /**
+     * The app, built in `--mode emulator` so its Firebase Auth client dials the
+     * emulator above. That build differs from `npm run build` in exactly one
+     * folded branch (see `app/services/auth/firebase-auth-port.ts`), and
+     * `vite.config.ts` fails the production build if that branch survives into
+     * it — so what e2e exercises and what ships stay one assertion apart rather
+     * than one hope apart.
+     */
+    {
+      command: 'npm run build:emulator && npm run preview',
+      port: PORT,
+      // Never adopt a server this run did not start. See the note above.
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
+  ],
   use: { baseURL: `http://localhost:${PORT}` },
 });
