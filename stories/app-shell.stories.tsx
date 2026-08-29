@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { Outlet, RouterProvider, createMemoryRouter } from 'react-router';
+import { createMemoryRouter, Outlet, RouterProvider } from 'react-router';
 import { expect, userEvent, within } from 'storybook/test';
 
 import {

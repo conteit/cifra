@@ -13,6 +13,7 @@
     "preview": "vite preview --port 4173",
     "typecheck": "react-router typegen && tsc --noEmit",
     "lint": "biome lint .",
+    "assist:check": "biome check --linter-enabled=false --formatter-enabled=false .",
     "format": "biome format --write .",
     "format:check": "biome format .",
     "test:unit": "vitest run --project unit",
@@ -21,7 +22,7 @@
     "prepare": "if [ -e .git ] && command -v lefthook >/dev/null 2>&1; then lefthook install; else echo 'skipping git hooks'; fi",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
-    "verify": "npm run typecheck && npm run lint && npm run format:check && npm run test:unit && npm run test:stories && npm run build && npm run build-storybook"
+    "verify": "npm run typecheck && npm run lint && npm run format:check && npm run assist:check && npm run test:unit && npm run test:stories && npm run build && npm run build-storybook"
   },
   "dependencies": {
     "@fontsource-variable/cormorant-garamond": "^5.3.0",

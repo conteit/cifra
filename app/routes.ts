@@ -1,4 +1,4 @@
-import { type RouteConfig, index, layout } from '@react-router/dev/routes';
+import { index, layout, type RouteConfig } from '@react-router/dev/routes';
 
 /**
  * Every page lives under the pathless app-shell layout, so nav, header and the

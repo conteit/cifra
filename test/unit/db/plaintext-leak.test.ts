@@ -26,8 +26,8 @@
 import Dexie from 'dexie';
 import { afterEach, describe, expect, it } from 'vitest';
 import { MIN_ENVELOPE_LENGTH_BYTES } from '../../../app/crypto/record-cipher';
-import { ENCRYPTED_BLOB_FIELD } from '../../../app/db/schema';
 import type { CategoryRow, TransactionRow } from '../../../app/db/schema';
+import { ENCRYPTED_BLOB_FIELD } from '../../../app/db/schema';
 import {
   occurrences,
   openTestVault,

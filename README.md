@@ -44,7 +44,7 @@ Then the full check that CI runs on every PR:
 
 ```bash
 npx playwright install chromium   # once: the story smoke tests render in a browser
-npm run verify   # typecheck && lint && format:check && test:unit && test:stories && build && build-storybook
+npm run verify   # typecheck && lint && format:check && assist:check && test:unit && test:stories && build && build-storybook
 ```
 
 End-to-end tests run separately:

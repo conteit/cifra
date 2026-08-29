@@ -540,12 +540,16 @@ pushes to `main`.
 ### The `verify` contract
 
 ```
-npm run verify = typecheck && lint && format:check && test:unit && test:stories && build && build-storybook
+npm run verify = typecheck && lint && format:check && assist:check && test:unit && test:stories && build && build-storybook
 ```
 
 CI runs exactly this on every PR — no extra steps, no missing ones. If it is
 green locally it is green in CI. Playwright e2e runs as a separate, slower CI
 job.
+
+`assist:check` is the stage that enforces Biome's *assist* actions
+(`source.organizeImports` in `biome.json`). Neither `biome lint` nor
+`biome format` runs assists, so the setting was inert until this stage existed.
 
 Vitest is split into two projects (`vitest.config.ts`). `test:unit` scopes to
 the `unit` project: Node environment, no browser, and it stays that way.

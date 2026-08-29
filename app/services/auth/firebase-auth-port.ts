@@ -3,11 +3,11 @@ import {
   type Auth,
   browserLocalPersistence,
   browserPopupRedirectResolver,
+  signOut as firebaseSignOut,
   GoogleAuthProvider,
   initializeAuth,
   onAuthStateChanged,
   signInWithPopup,
-  signOut as firebaseSignOut,
   type User,
 } from 'firebase/auth';
 

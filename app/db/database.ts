@@ -22,7 +22,7 @@ import {
   TABLE_ALLOWLIST,
   type TransactionRow,
 } from './schema';
-import { vaultKey, type VaultKeyHolder } from './vault-key';
+import { type VaultKeyHolder, vaultKey } from './vault-key';
 
 export class CifraDatabase extends Dexie {
   // `declare` rather than a field declaration: with `useDefineForClassFields`
