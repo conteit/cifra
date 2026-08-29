@@ -17,7 +17,7 @@ restart spec** — the superseded v1 choices are called out inline.
 | §Product | [Product](#product) | Core value, target user, non-goals |
 | §Requirements | [Requirements](#requirements) | The 68 v1 requirement IDs |
 | §Roadmap | [Roadmap](#roadmap) | 9 phases, goals, success criteria |
-| §Decisions | [Decisions](#decisions) | D1–D15 + carried-over v1 decisions |
+| §Decisions | [Decisions](#decisions) | D1–D17 + carried-over v1 decisions |
 | §Stack | [Stack and layering](#stack-and-layering) | Dependencies, layer contract |
 | §Crypto | [Crypto and data layer](#crypto-and-data-layer) | Key hierarchy, middleware, allowlist |
 | §Import | [Bank import](#bank-import) | Parser registry, detection, profiles |
@@ -322,6 +322,16 @@ Binding decisions from the 2026-08-23 restart design spec.
 | V1-3 | Semantic design tokens only — components never reference raw colour or size values | Keeps the Editorial Italiana language changeable in one place and makes theming additive |
 | V1-4 | Italian number and date parsing rules are explicit, never implicit | `1.234,56` must go through a dedicated parser; dates always parse against the profile's format, never `new Date(string)` |
 | V1-5 | **Light only. There is no dark theme** | Editorial Italiana is cream paper and green/ink print — "Light, not dark" is the identity, not a default. No `dark:` variants, no `prefers-color-scheme` branch, `color-scheme: light` pinned on the document. Adding a dark palette would need a new decision here first |
+
+### Decisions taken during the build (D16–)
+
+Binding decisions made after the restart spec was written, numbered on from the
+restart log.
+
+| # | Decision | Rationale |
+|---|---|---|
+| D16 | **Every pigment drawn as text clears WCAG 2.x AA (4.5:1) against every surface the design system permits it on.** The permitted foreground/surface pairs are enumerated and enforced by `test/unit/palette-contrast.test.ts`, which reads the values out of `app/app.css` itself. `surface-page`, `surface-card` and `surface-inset` are text surfaces and carry any text token; `surface-track` is a *graphic* surface (progress tracks, the secondary button's hover fill) and carries only `text-primary` and `text-secondary`; `surface-inverse` carries `text-inverse` and the accent washes; each money accent and each category colour is additionally paired with its own `-surface` wash | The type scale uses `text-meta` at 8.5px and the money accents at 17px, so no large-text exemption applies. Storybook's axe pass only sees pixels a story happens to paint, which is why `--ramp-sepia-500` (3.95:1) and `--ramp-amber-600` (2.87:1) shipped in #1 and were caught only when #2 made a11y blocking. Asserting the *contract* rather than the rendering catches a pigment that no story renders yet, and catches re-lightening later. FOUN-08 is preserved by moving lightness in OKLCH with hue held, never by desaturating toward grey |
+| D17 | **`--color-accent-income-strong` is a non-text token** — bars, chart series and fills. It carries the 3:1 WCAG 1.4.11 non-text bar, not 4.5:1 | At `#4a7c43` it reaches only 4.35:1 on the page and 3.82:1 on its own wash. Darkening it to pass as text would close the gap to `accent-income` (`#2d5a27`) to ~0.07 OKLCH lightness, which is not a distinguishable second green — the token would stop doing its job. It is lighter than `accent-income` by construction, and a *lighter* hover colour on cream paper lowers contrast rather than raising it, so it was never a sound text-hover token. Its role is the one that changes, not its pigment |
 
 ### Superseded v1 decisions
 
