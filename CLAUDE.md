@@ -149,7 +149,11 @@ npm run test:e2e
 ```
 
 `npm run test:e2e` runs Playwright (`playwright test`); CI's `e2e` job uses
-this same alias.
+this same alias. Playwright starts both servers it needs — the Firebase Auth
+emulator and an `npm run build:emulator` preview on 4318 — so the local run and
+the CI job execute the identical thing and neither needs anything running first.
+Both are `reuseExistingServer: false`: a stale listener on either port fails the
+run rather than being adopted.
 
 Notes on the build: React Router runs in framework mode with `ssr: false`, so
 the app is a pure SPA. `npm run build` ends with `rm -rf build/server` — that is
@@ -161,9 +165,21 @@ SPA mode, not dead code. Leave it.
 ```bash
 nvm use          # Node 24, pinned in .nvmrc and engines
 npm ci
+npm run emulators # Firebase Auth emulator on :9099 (auth only — firebase.json)
 npm run dev      # app on the Vite dev server
 npm run storybook # design workbench on :6006
 ```
+
+**Auth is emulator-first locally.** A clone needs no `.env`, no Firebase project
+and no secrets: `npm run dev` (Vite mode `development`) and
+`npm run build:emulator` (mode `emulator`) dial the local Auth emulator; every
+other mode reads the four `VITE_FIREBASE_*` variables, which live only in
+Vercel's production environment. The switch is the `import.meta.env.MODE`
+comparison in `app/services/auth/firebase-auth-port.ts` — a build-time literal,
+never a runtime value — and `vite.config.ts` fails `npm run build` if any
+emulator-only string survives into `build/client`, or fails
+`npm run build:emulator` if they do not. Do not replace that comparison with a
+constant or an env lookup: the fold is what deletes the branch.
 
 ## Commits and branches
 

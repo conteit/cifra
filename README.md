@@ -37,8 +37,20 @@ CI contract, PWA shell); product features are being built phase by phase. See
 ```bash
 nvm use          # Node 24
 npm ci
+npm run emulators   # in a second terminal: Firebase Auth emulator on :9099
 npm run dev
 ```
+
+**No `.env` file, no Firebase project, and no secrets are needed.** Sign-in in
+development runs against the local Firebase Auth emulator, which accepts any
+project id and any API key. `npm run emulators` starts it — the Auth emulator
+only, as a plain Node process (no Java, no downloads beyond `npm ci`). Without it
+running, the app still loads; sign-in simply reports itself unavailable.
+
+Real `VITE_FIREBASE_*` values exist in exactly one place — the Vercel project's
+environment variables for production. They are not part of a local setup; see
+[.env.example](.env.example) for the details and for why a Firebase web config
+is public by design.
 
 Then the full check that CI runs on every PR:
 
@@ -47,10 +59,11 @@ npx playwright install chromium   # once: the story smoke tests render in a brow
 npm run verify   # typecheck && lint && format:check && assist:check && test:unit && test:stories && build && build-storybook
 ```
 
-End-to-end tests run separately:
+End-to-end tests run separately. They start the Auth emulator and an
+emulator-mode build themselves, so nothing needs to be running first:
 
 ```bash
-npx playwright test
+npm run test:e2e
 ```
 
 The design system lives in Storybook:

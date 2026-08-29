@@ -42,6 +42,20 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Yes, this job runs the Firebase Auth emulator (#44) — and it needs no step
+    # of its own to do it. `playwright.config.ts` declares the emulator as a
+    # `webServer`, so `npm run test:e2e` starts it here exactly as it does on a
+    # laptop; a CI-only setup step would be a second way to start it and a
+    # second thing to drift. `firebase-tools` is a devDependency installed by
+    # `npm ci`, and the Auth emulator is a plain Node process — no Java, no
+    # emulator downloads, no `firebase login`, no project.
+    #
+    # What that leaves untested here: the *production* Firebase path. Nothing in
+    # CI signs in against a real project, so a broken `VITE_FIREBASE_*` value in
+    # Vercel, a missing authorized domain, or a Google-provider misconfiguration
+    # would still reach production unseen. Deliberate: the credentials for that
+    # do not belong in CI, and `readFirebaseConfig` plus the session store's
+    # `unavailable` branch are covered as units instead.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
