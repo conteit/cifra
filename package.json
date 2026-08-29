@@ -10,7 +10,7 @@
     "build": "react-router build && rm -rf build/server",
     "dev": "react-router dev",
     "icons": "node scripts/generate-icons.mjs",
-    "preview": "vite preview --port 4173",
+    "preview": "vite preview --port 4318",
     "typecheck": "react-router typegen && tsc --noEmit",
     "lint": "biome lint .",
     "assist:check": "biome check --linter-enabled=false --formatter-enabled=false .",
