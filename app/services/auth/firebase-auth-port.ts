@@ -3,6 +3,7 @@ import {
   type Auth,
   browserLocalPersistence,
   browserPopupRedirectResolver,
+  connectAuthEmulator,
   signOut as firebaseSignOut,
   GoogleAuthProvider,
   initializeAuth,
@@ -11,7 +12,12 @@ import {
   type User,
 } from 'firebase/auth';
 
-import { readFirebaseConfig } from './firebase-config';
+import {
+  AUTH_EMULATOR_BUILD_MARKER,
+  AUTH_EMULATOR_CONFIG,
+  AUTH_EMULATOR_URL,
+} from './auth-emulator';
+import { type FirebaseWebConfig, readFirebaseConfig } from './firebase-config';
 import type { AuthPort, AuthUser } from './types';
 
 /**
@@ -56,30 +62,80 @@ import type { AuthPort, AuthUser } from './types';
 
 const GOOGLE_SCOPES: readonly string[] = [];
 
+/**
+ * `initializeAuth` is used instead of `getAuth` so the persistence and the
+ * popup/redirect resolver are explicit dependencies: `getAuth` pulls every
+ * persistence backend and the full resolver into the bundle, `initializeAuth`
+ * lets the bundler drop what we do not name.
+ */
+const AUTH_DEPENDENCIES = {
+  persistence: browserLocalPersistence,
+  popupRedirectResolver: browserPopupRedirectResolver,
+};
+
 let cachedAuth: Auth | undefined;
 
-function getFirebaseApp(): FirebaseApp {
+function getFirebaseApp(config: FirebaseWebConfig): FirebaseApp {
   const existing = getApps();
   if (existing.length > 0) return existing[0];
-  return initializeApp(readFirebaseConfig(import.meta.env));
+  return initializeApp(config);
 }
 
 /**
  * Initialises Firebase Auth exactly once per page.
  *
- * `initializeAuth` is used instead of `getAuth` so the persistence and the
- * popup/redirect resolver are explicit dependencies: `getAuth` pulls every
- * persistence backend and the full resolver into the bundle, `initializeAuth`
- * lets the bundler drop what we do not name.
+ * ## The emulator branch, and why it cannot reach production
  *
- * @throws {AuthConfigurationError} when the Firebase env vars are missing.
+ * The condition below is a **build-time** one. Vite replaces
+ * `import.meta.env.MODE` with a string literal during `vite build`, so in a
+ * production build the whole expression is `"production" === "development" ||
+ * "production" === "emulator"`, esbuild folds it to `false`, and Rollup deletes
+ * the branch — taking `connectAuthEmulator` and the whole `./auth-emulator`
+ * module with it. There is no runtime value anywhere in the shipped bundle that
+ * can switch this back on: no env var read at runtime, no `window` flag, no
+ * `localStorage` key.
+ *
+ * That claim is not left to trust. `vite.config.ts` reads the emitted client
+ * bundle back and fails `npm run build` if `AUTH_EMULATOR_BUILD_MARKER` (or
+ * `connectAuthEmulator`, or the emulator origin) survives into it — and fails
+ * `npm run build:emulator` if they do *not*. Issue #44.
+ *
+ * Modes that get the emulator:
+ *   · `development` — `npm run dev`. The emulator is the default local path;
+ *     a fresh clone needs no `.env` and no real Firebase project.
+ *   · `emulator`    — `npm run build:emulator`, the build Playwright serves so
+ *     the e2e suite can actually sign in.
+ * Everything else, `production` included, reads the four `VITE_FIREBASE_*`
+ * variables and fails loudly by name when they are absent.
+ *
+ * @throws {AuthConfigurationError} when the Firebase env vars are missing
+ * (production modes only — the emulator branch needs no configuration).
  */
 function getAuthClient(): Auth {
   if (cachedAuth !== undefined) return cachedAuth;
-  cachedAuth = initializeAuth(getFirebaseApp(), {
-    persistence: browserLocalPersistence,
-    popupRedirectResolver: browserPopupRedirectResolver,
-  });
+
+  if (
+    import.meta.env.MODE === 'development' ||
+    import.meta.env.MODE === 'emulator'
+  ) {
+    const auth = initializeAuth(
+      getFirebaseApp(AUTH_EMULATOR_CONFIG),
+      AUTH_DEPENDENCIES,
+    );
+    // Must follow `initializeAuth` immediately and precede every other auth
+    // call, which is why it lives here rather than in the port factory.
+    connectAuthEmulator(auth, AUTH_EMULATOR_URL, { disableWarnings: true });
+    console.info(
+      `[cifra] ${AUTH_EMULATOR_BUILD_MARKER} — signing in against ${AUTH_EMULATOR_URL}, not a real Firebase project.`,
+    );
+    cachedAuth = auth;
+    return cachedAuth;
+  }
+
+  cachedAuth = initializeAuth(
+    getFirebaseApp(readFirebaseConfig(import.meta.env)),
+    AUTH_DEPENDENCIES,
+  );
   return cachedAuth;
 }
 
