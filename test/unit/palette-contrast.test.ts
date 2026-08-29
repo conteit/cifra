@@ -25,9 +25,23 @@ import { describe, expect, it } from 'vitest';
  *   1. PERMITTED enumerates which surfaces each foreground may sit on. It is
  *      the design system's statement of intent, not a list drawn around the
  *      numbers — see the surface comments in `app/app.css`.
- *   2. The exhaustiveness test fails if a new `--color-text-*`,
- *      `--color-accent-*` or `--color-category-*` token is added without a
- *      line in PERMITTED, so the matrix cannot quietly fall behind the theme.
+ *   2. The exhaustiveness test fails if *any* `--color-*` token is neither a
+ *      line in PERMITTED nor an entry in NOT_A_FOREGROUND with a reason, so
+ *      the matrix cannot quietly fall behind the theme.
+ *
+ * ## What review finding C-11 found
+ *
+ * `--color-focus-ring` sat outside the matrix. A reviewer repainted the focus
+ * ring to invisible cream and all 84 assertions still passed — the ring is the
+ * one affordance a keyboard user has, and nothing checked it.
+ *
+ * The exhaustiveness test was supposed to prevent exactly that and did not,
+ * because it derived the token list from the same three families the matrix
+ * already covered (`--color-text-*`, `--color-accent-*`, `--color-category-*`,
+ * plus `--color-action-on-*`). It asserted that the matrix covered its own
+ * families — a tautology — rather than that it covered the theme. Any token in
+ * a family nobody had thought of was invisible to both. It now enumerates
+ * every `--color-*` declaration in the sheet and demands each be classified.
  */
 
 const cssPath = fileURLToPath(new URL('../../app/app.css', import.meta.url));
@@ -162,6 +176,37 @@ const PERMITTED: Pair[] = [
     note: 'the primary button label, at rest and on hover',
   },
   {
+    fg: '--color-action-primary',
+    on: TEXT_SURFACES,
+    min: NON_TEXT,
+    // The button's fill is what makes the control visible as a control, so it
+    // is a "user interface component" under WCAG 1.4.11: 3:1, not 4.5:1. Its
+    // *label* is the pair above, at the text bar.
+    note: 'the primary button body against the surface it sits on',
+  },
+  {
+    fg: '--color-action-primary-hover',
+    on: TEXT_SURFACES,
+    min: NON_TEXT,
+    note: 'the primary button body on hover',
+  },
+  {
+    fg: '--color-focus-ring',
+    // C-11. The ring is drawn with `outline-offset-2`, so the 2px gap shows
+    // the surface the control sits on: the ring's neighbouring colour is that
+    // surface, not the control's own fill. Every focusable control in the app
+    // today sits on one of these four (`surface-track` is the secondary
+    // button's hover fill). `surface-inverse` is deliberately absent — no
+    // focusable control is placed on the dark panel yet, and the ring does not
+    // clear 3:1 there (2.12:1); issue #65 tracks that.
+    on: [...TEXT_SURFACES, '--color-surface-track'],
+    // WCAG 1.4.11 non-text contrast: a focus indicator is a graphical object
+    // that identifies a UI component's state, so the bar is 3:1, not the 4.5:1
+    // that applies to body text.
+    min: NON_TEXT,
+    note: 'the one keyboard-focus treatment, on every surface a control sits on',
+  },
+  {
     fg: '--color-accent-income',
     on: [...TEXT_SURFACES, accentWash('income')],
     min: AA_TEXT,
@@ -209,6 +254,45 @@ const PERMITTED: Pair[] = [
   })),
 ];
 
+/**
+ * Every other `--color-*` token, with why it carries no contrast obligation.
+ *
+ * This is the other half of the exhaustiveness contract: a token is either a
+ * foreground with permitted backgrounds, or it is here with a reason. There is
+ * no third state, so a new token cannot be added to `app.css` without someone
+ * deciding which it is.
+ */
+const NOT_A_FOREGROUND: Readonly<Record<string, string>> = {
+  '--color-transparent':
+    'a CSS keyword, not a pigment — kept so `bg-transparent` still compiles.',
+  '--color-current':
+    'a CSS keyword (`currentcolor`) — resolves to whatever the inherited text colour is.',
+  '--color-inherit':
+    'a CSS keyword — resolves to the parent, so it has no fixed value to measure.',
+  '--color-surface-page':
+    'a background. It appears in the matrix as something foregrounds sit on, never as ink.',
+  '--color-surface-card':
+    'a background. It appears in the matrix as something foregrounds sit on, never as ink.',
+  '--color-surface-inset':
+    'a background. It appears in the matrix as something foregrounds sit on, never as ink.',
+  '--color-surface-track':
+    'a graphic background — progress tracks and the secondary button hover fill. Never ink.',
+  '--color-surface-inverse':
+    'the dark hero panel background. Carries text-inverse and the accent washes; never ink itself.',
+  '--color-rule':
+    'a structural hairline at 12% ink. Decorative separation, not the sole means of identifying any control, so WCAG 1.4.11 does not bind it. Also non-opaque, which this suite cannot compose.',
+  '--color-rule-soft':
+    'the 6% ink hairline that divides list rows. Same reasoning as --color-rule, one step softer.',
+  '--color-scrim':
+    'the 45% ink wash a modal lays over the page. Its job is to dim, not to be legible against anything.',
+  ...Object.fromEntries(
+    CATEGORIES.map((name) => [
+      categoryWash(name),
+      'a category wash: only ever the fill behind its own chip, never drawn as ink.',
+    ]),
+  ),
+};
+
 /* ── Tests ──────────────────────────────────────────────────────────────── */
 
 describe('palette contrast (D16)', () => {
@@ -225,18 +309,46 @@ describe('palette contrast (D16)', () => {
     });
   });
 
-  it('covers every colour token that can be drawn as a foreground', () => {
-    // Every text, accent and category token is a foreground somewhere. The
-    // category washes are the one exception: they are only ever a fill.
+  it('classifies every --color-* token in the sheet', () => {
+    // C-11: the old version of this test derived `declared` from the same
+    // families the matrix already covered, so it could never notice a token in
+    // a family nobody had thought of — which is how `--color-focus-ring` went
+    // unchecked. It now starts from every declaration in app.css.
     const declared = [...tokens.keys()]
-      .filter((name) =>
-        /^--color-(text|accent|category)-|^--color-action-on-/.test(name),
-      )
-      .filter((name) => !/^--color-category-.+-surface$/.test(name))
+      .filter((name) => name.startsWith('--color-'))
       .sort();
-    const covered = [...new Set(PERMITTED.map((pair) => pair.fg))].sort();
+    const covered = new Set(PERMITTED.map((pair) => pair.fg));
+    const excused = new Set(Object.keys(NOT_A_FOREGROUND));
 
-    expect(covered).toEqual(declared);
+    const unclassified = declared.filter(
+      (name) => !covered.has(name) && !excused.has(name),
+    );
+    expect(
+      unclassified,
+      `these colour tokens are neither a permitted foreground nor an explicit non-foreground:\n${unclassified.join('\n')}`,
+    ).toEqual([]);
+  });
+
+  it('does not excuse a token that no longer exists', () => {
+    const declared = new Set(tokens.keys());
+    const stale = Object.keys(NOT_A_FOREGROUND)
+      .filter((name) => !declared.has(name))
+      .sort();
+    expect(stale).toEqual([]);
+  });
+
+  it('names a real reason for every non-foreground', () => {
+    for (const [name, why] of Object.entries(NOT_A_FOREGROUND)) {
+      expect(why.length, `${name} has no reason`).toBeGreaterThan(20);
+    }
+  });
+
+  it('never lists a token as both a foreground and a non-foreground', () => {
+    const covered = new Set(PERMITTED.map((pair) => pair.fg));
+    const both = Object.keys(NOT_A_FOREGROUND).filter((name) =>
+      covered.has(name),
+    );
+    expect(both).toEqual([]);
   });
 
   it('resolves the two pigments issue #45 repainted', () => {
