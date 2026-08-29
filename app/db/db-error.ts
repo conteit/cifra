@@ -30,6 +30,8 @@ export type DbEncryptionErrorCode =
   | 'schema/unknown-table'
   /** A field is declared both indexed and encrypted, or an index is missing. */
   | 'schema/index-conflict'
+  /** A plaintext index does not declare whether it is bound into the AAD. */
+  | 'schema/unbound-index'
   /** An encrypted table's primary key is not an inbound, non-auto string key. */
   | 'schema/invalid-primary-key'
   /** A written value is not a plain object at all. */
@@ -42,6 +44,8 @@ export type DbEncryptionErrorCode =
   | 'record/invalid-primary-key'
   /** A money field is not a safe integer number of cents. */
   | 'record/invalid-cents'
+  /** An AAD-bound plaintext column is absent, empty, or not a string. */
+  | 'record/invalid-bound-field'
   /** A stored row failed authentication or could not be parsed back. */
   | 'record/corrupt'
   /** A value-bearing cursor was opened on an encrypted table. */

@@ -333,6 +333,60 @@ describe('partial updates', () => {
       before[ENCRYPTED_BLOB_FIELD],
     );
   });
+
+  it('re-encrypts, not just re-indexes, when a bound column changes', async () => {
+    // #51: `date` and `type` are authenticated with the record, so changing one
+    // has to re-emit the ciphertext. Dexie's update() read-modify-writes into a
+    // whole-value put, which is what makes that automatic — this asserts it.
+    const { db, name } = await vault();
+    await db.transactions.put(transaction());
+    const before = (await rawGet(name, 'transactions', 'txn-0001')) as Record<
+      string,
+      unknown
+    >;
+
+    await db.transactions.update('txn-0001', { date: '2026-09-15' });
+
+    await expect(db.transactions.get('txn-0001')).resolves.toEqual(
+      transaction({ date: '2026-09-15' }),
+    );
+    const after = (await rawGet(name, 'transactions', 'txn-0001')) as Record<
+      string,
+      unknown
+    >;
+    expect(after.date).toBe('2026-09-15');
+    expect(after[ENCRYPTED_BLOB_FIELD]).not.toEqual(
+      before[ENCRYPTED_BLOB_FIELD],
+    );
+  });
+
+  it('re-encrypts when modify() changes a bound column', async () => {
+    const { db, name } = await vault();
+    await db.transactions.put(transaction());
+    const before = (await rawGet(name, 'transactions', 'txn-0001')) as Record<
+      string,
+      unknown
+    >;
+
+    await db.transactions
+      .where('type')
+      .equals('electronic')
+      .modify((row) => {
+        row.type = 'cash';
+      });
+
+    await expect(db.transactions.get('txn-0001')).resolves.toEqual(
+      transaction({ type: 'cash' }),
+    );
+    const after = (await rawGet(name, 'transactions', 'txn-0001')) as Record<
+      string,
+      unknown
+    >;
+    expect(after.type).toBe('cash');
+    expect(after[ENCRYPTED_BLOB_FIELD]).not.toEqual(
+      before[ENCRYPTED_BLOB_FIELD],
+    );
+  });
 });
 
 describe('fail closed', () => {
@@ -585,6 +639,81 @@ describe('tamper detection', () => {
     });
 
     await expectDbError(db.categories.get('shared-id'), 'record/corrupt');
+  });
+
+  it('reports a rewritten date column as corruption', async () => {
+    // The #51 defect, demonstrated: an attacker with raw database access edits
+    // the plaintext-indexed `date` and leaves the ciphertext alone. Before the
+    // AAD bound it, this row read back as a fully authentic record dated a
+    // different month.
+    const { db, name } = await vault();
+    await db.transactions.put(transaction());
+
+    const row = (await rawGet(name, 'transactions', 'txn-0001')) as Record<
+      string,
+      unknown
+    >;
+    await rawPut(name, 'transactions', { ...row, date: '2026-01-31' });
+
+    await expectDbError(db.transactions.get('txn-0001'), 'record/corrupt');
+    // And the tampered value never reaches a reader through any path.
+    await expectDbError(db.transactions.toArray(), 'record/corrupt');
+    await expectDbError(
+      db.transactions.where('date').equals('2026-01-31').toArray(),
+      'record/corrupt',
+    );
+  });
+
+  it('reports a flipped type column as corruption', async () => {
+    // Flipping `type` moves money between the cash wallet and the bank
+    // (CASH-01) without touching a single byte of ciphertext.
+    const { db, name } = await vault();
+    await db.transactions.put(transaction());
+
+    const row = (await rawGet(name, 'transactions', 'txn-0001')) as Record<
+      string,
+      unknown
+    >;
+    await rawPut(name, 'transactions', { ...row, type: 'cash' });
+
+    await expectDbError(db.transactions.get('txn-0001'), 'record/corrupt');
+  });
+
+  it('reports a bound column stripped from a row as corruption', async () => {
+    const { db, name } = await vault();
+    await db.transactions.put(transaction());
+
+    const row = (await rawGet(name, 'transactions', 'txn-0001')) as Record<
+      string,
+      unknown
+    >;
+    delete row.type;
+    await rawPut(name, 'transactions', row);
+
+    await expectDbError(db.transactions.get('txn-0001'), 'record/corrupt');
+  });
+
+  it('reports a blob replayed onto a row with the same id but another date', async () => {
+    // The AAD binds the row's own columns, so an old envelope cannot be
+    // restored over a record that has since moved to a different date.
+    const { db, name } = await vault();
+    await db.transactions.put(transaction());
+    const stale = (await rawGet(name, 'transactions', 'txn-0001')) as Record<
+      string,
+      unknown
+    >;
+
+    await db.transactions.update('txn-0001', { date: '2026-09-15' });
+    const current = (await rawGet(name, 'transactions', 'txn-0001')) as Record<
+      string,
+      unknown
+    >;
+    await rawPut(name, 'transactions', {
+      ...current,
+      [ENCRYPTED_BLOB_FIELD]: stale[ENCRYPTED_BLOB_FIELD],
+    });
+
+    await expectDbError(db.transactions.get('txn-0001'), 'record/corrupt');
   });
 
   it('reports a row with no envelope as corruption', async () => {

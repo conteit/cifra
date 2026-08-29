@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { DbEncryptionError } from '../../../app/db/db-error';
 import {
+  aadBoundFieldNames,
   assertValidAllowlist,
   ENCRYPTED_BLOB_FIELD,
   requireTableSpec,
@@ -74,6 +75,31 @@ describe('the shipped allowlist', () => {
     expect(TABLE_ALLOWLIST.meta.kind).toBe('plaintext');
   });
 
+  it('binds every meaningful plaintext index into the AAD', () => {
+    // #51: `date` and `type` are plaintext because IndexedDB must range-query
+    // them, but both carry meaning a rewritten value distorts, so both are
+    // authenticated with the record.
+    expect(TABLE_ALLOWLIST.transactions.aadBinding).toEqual({
+      date: { aad: 'bound' },
+      type: { aad: 'bound' },
+    });
+    expect(TABLE_ALLOWLIST.categories.aadBinding).toEqual({});
+  });
+
+  it('derives the AAD field order from the allowlist, not from a call site', () => {
+    expect(aadBoundFieldNames(TABLE_ALLOWLIST.transactions)).toEqual([
+      'date',
+      'type',
+    ]);
+    // Declaration order, so writers and readers cannot disagree about it.
+    expect(aadBoundFieldNames(TABLE_ALLOWLIST.transactions)).toEqual(
+      TABLE_ALLOWLIST.transactions.indexes.filter(
+        (index) => TABLE_ALLOWLIST.transactions.aadBinding[index] !== undefined,
+      ),
+    );
+    expect(aadBoundFieldNames(TABLE_ALLOWLIST.categories)).toEqual([]);
+  });
+
   it('justifies every plaintext field as structural', () => {
     for (const spec of Object.values(TABLE_ALLOWLIST)) {
       if (spec.kind !== 'encrypted') continue;
@@ -110,6 +136,7 @@ describe('construction-time validation', () => {
       id: 'opaque client-generated identifier, carries no content',
       date: 'calendar day, indexed for the date-sorted list and range queries',
     },
+    aadBinding: { date: { aad: 'bound' } },
   } as const;
 
   it('rejects a field that is both indexed and encrypted', () => {
@@ -189,6 +216,87 @@ describe('construction-time validation', () => {
           },
         } as unknown as TableAllowlist),
       'schema/index-conflict',
+    );
+  });
+
+  it('refuses a new plaintext index that declares no AAD binding', () => {
+    // The durable half of #51: adding an index without deciding whether it is
+    // authenticated is not a silent default to "unbound", it is an error.
+    expectSchemaError(
+      () =>
+        assertValidAllowlist({
+          t: {
+            ...base,
+            indexes: ['date', 'merchant'],
+            plaintextRationale: {
+              ...base.plaintextRationale,
+              merchant: 'structural counterparty key, indexed for grouping',
+            },
+          },
+        } as unknown as TableAllowlist),
+      'schema/unbound-index',
+    );
+  });
+
+  it('makes leaving an index unbound cost a written rationale', () => {
+    const unbound = (rationale: unknown) => ({
+      t: {
+        ...base,
+        aadBinding: { date: { aad: 'unbound', rationale } },
+      },
+    });
+
+    expectSchemaError(
+      () => assertValidAllowlist(unbound('') as unknown as TableAllowlist),
+      'schema/invalid-allowlist',
+    );
+    expectSchemaError(
+      () =>
+        assertValidAllowlist(unbound(undefined) as unknown as TableAllowlist),
+      'schema/invalid-allowlist',
+    );
+    expect(() =>
+      assertValidAllowlist(
+        unbound(
+          'derived cache, recomputed on read',
+        ) as unknown as TableAllowlist,
+      ),
+    ).not.toThrow();
+  });
+
+  it('rejects an unknown binding keyword', () => {
+    expectSchemaError(
+      () =>
+        assertValidAllowlist({
+          t: { ...base, aadBinding: { date: { aad: 'maybe' } } },
+        } as unknown as TableAllowlist),
+      'schema/invalid-allowlist',
+    );
+  });
+
+  it('rejects a binding for a field that is not an index', () => {
+    expectSchemaError(
+      () =>
+        assertValidAllowlist({
+          t: {
+            ...base,
+            aadBinding: { ...base.aadBinding, amount: { aad: 'bound' } },
+          },
+        } as unknown as TableAllowlist),
+      'schema/invalid-allowlist',
+    );
+  });
+
+  it('rejects a binding for the primary key, which is always bound', () => {
+    expectSchemaError(
+      () =>
+        assertValidAllowlist({
+          t: {
+            ...base,
+            aadBinding: { ...base.aadBinding, id: { aad: 'bound' } },
+          },
+        } as unknown as TableAllowlist),
+      'schema/invalid-allowlist',
     );
   });
 
