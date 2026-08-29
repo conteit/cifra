@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWrappedDataKey } from '../../../app/crypto/key-wrap';
 import { DbEncryptionError } from '../../../app/db/db-error';
-import { vaultKey, VaultKeyHolder } from '../../../app/db/vault-key';
+import { VaultKeyHolder, vaultKey } from '../../../app/db/vault-key';
 import { makeDataKey } from './support';
 
 const subtle = globalThis.crypto.subtle;

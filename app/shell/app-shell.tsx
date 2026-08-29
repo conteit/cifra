@@ -4,9 +4,9 @@ import { NavLink, useLocation } from 'react-router';
 import { cx, focusRing } from '../ui/cx';
 import { Modal } from '../ui/modal';
 import {
+  navItems as defaultNavItems,
   type NavItem,
   type NavLabelKey,
-  navItems as defaultNavItems,
   overflowNavItems,
   primaryNavItems,
 } from './nav-items';

@@ -1,15 +1,15 @@
 export {
   AppShell,
-  MAIN_CONTENT_ID,
   type AppShellProps,
+  MAIN_CONTENT_ID,
   type ShellStrings,
 } from './app-shell';
 export {
-  navItems,
-  overflowNavItems,
-  primaryNavItems,
   type NavItem,
   type NavItemId,
   type NavItemStatus,
   type NavLabelKey,
+  navItems,
+  overflowNavItems,
+  primaryNavItems,
 } from './nav-items';

@@ -1,8 +1,7 @@
 import { useEffect } from 'react';
 import { useStore } from 'zustand';
-
-import { getSessionStore } from './session-instance';
 import type { SessionState } from './session';
+import { getSessionStore } from './session-instance';
 
 /**
  * React bindings for the session store. This is the only auth module that

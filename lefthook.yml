@@ -11,6 +11,8 @@ pre-commit:
       run: npm run format:check
     lint:
       run: npm run lint
+    assist:
+      run: npm run assist:check
 
 pre-push:
   commands:

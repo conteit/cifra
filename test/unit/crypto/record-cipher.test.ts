@@ -9,8 +9,8 @@ import {
   MAX_PLAINTEXT_BYTES,
   MIN_ENVELOPE_LENGTH_BYTES,
   RECORD_ENVELOPE_VERSION,
-  type RecordContext,
   RecordCipherError,
+  type RecordContext,
 } from '../../../app/crypto/record-cipher';
 
 const subtle = globalThis.crypto.subtle;

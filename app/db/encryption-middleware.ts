@@ -77,6 +77,20 @@
  * and the KDF salt before a key exists.
  */
 
+import type {
+  DBCore,
+  DBCoreCountRequest,
+  DBCoreGetManyRequest,
+  DBCoreGetRequest,
+  DBCoreIndex,
+  DBCoreMutateRequest,
+  DBCoreMutateResponse,
+  DBCoreOpenCursorRequest,
+  DBCoreQueryRequest,
+  DBCoreQueryResponse,
+  DBCoreTable,
+  Middleware,
+} from 'dexie';
 import Dexie from 'dexie';
 import {
   decryptRecord,
@@ -98,21 +112,6 @@ import {
   type TableAllowlist,
 } from './schema';
 import type { VaultKeyHolder } from './vault-key';
-
-import type {
-  DBCore,
-  DBCoreCountRequest,
-  DBCoreGetManyRequest,
-  DBCoreGetRequest,
-  DBCoreIndex,
-  DBCoreMutateRequest,
-  DBCoreMutateResponse,
-  DBCoreOpenCursorRequest,
-  DBCoreQueryRequest,
-  DBCoreQueryResponse,
-  DBCoreTable,
-  Middleware,
-} from 'dexie';
 
 export interface EncryptionMiddlewareOptions {
   /** The security contract. Validated eagerly; a contradiction throws here. */

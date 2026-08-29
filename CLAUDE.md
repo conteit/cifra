@@ -106,7 +106,7 @@ npm run verify
 is exactly:
 
 ```
-typecheck && lint && format:check && test:unit && test:stories && build && build-storybook
+typecheck && lint && format:check && assist:check && test:unit && test:stories && build && build-storybook
 ```
 
 CI runs **exactly this** on every PR — nothing more, nothing less. Green
@@ -114,8 +114,15 @@ locally means green in CI. Never claim work is done without having run it and
 seen it pass.
 
 Individual stages: `npm run typecheck`, `npm run lint`, `npm run format`
-(writes) / `npm run format:check` (verifies), `npm run test:unit`,
-`npm run test:stories`, `npm run build`, `npm run build-storybook`.
+(writes) / `npm run format:check` (verifies), `npm run assist:check`,
+`npm run test:unit`, `npm run test:stories`, `npm run build`,
+`npm run build-storybook`.
+
+`assist:check` runs Biome's *assist* actions — today only
+`source.organizeImports`, enabled in `biome.json`. Biome's formatter and linter
+do not run assists, so before this stage existed the setting enforced nothing
+and 13 files had drifted out of import order. `npm run format` does not fix
+this; `npx biome check --write .` does.
 
 Vitest runs two projects (`vitest.config.ts`):
 

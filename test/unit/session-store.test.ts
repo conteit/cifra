@@ -1,16 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-
+import { AuthConfigurationError } from '../../app/services/auth/auth-error';
+import type { AuthPort, AuthUser } from '../../app/services/auth/types';
 import {
   createSessionStore,
+  type SessionEndedEvent,
+  type SessionStore,
   selectIsAuthenticated,
   selectIsResolving,
   selectIsSigningIn,
   selectIsUnavailable,
-  type SessionEndedEvent,
-  type SessionStore,
 } from '../../app/stores/session';
-import { AuthConfigurationError } from '../../app/services/auth/auth-error';
-import type { AuthPort, AuthUser } from '../../app/services/auth/types';
 
 const ADA: AuthUser = {
   uid: 'uid-ada',
