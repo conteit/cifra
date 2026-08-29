@@ -30,6 +30,13 @@ coverage/
 # Logs
 *.log
 
+# Firebase emulator scratch. `firebase.json` is committed (Auth emulator only);
+# everything the emulator writes beside it is per-run state.
+.firebase/
+firebase-debug.*.log
+firestore-debug.log
+ui-debug.log
+
 # SDD scratch (not part of the app)
 .superpowers/
 
