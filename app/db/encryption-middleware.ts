@@ -65,7 +65,7 @@
  * `delete`, `clear`, `update` and `modify` all route through `get` / `getMany`
  * / `query` / `mutate`. Filtering on decrypted content has to happen in a
  * service after reading anyway — the data is not indexable — so the restriction
- * pushes callers towards the only design that was ever going to work. Issue #40
+ * pushes callers towards the only design that was ever going to work. Issue #41
  * tracks revisiting it.
  *
  * ## Locked state
@@ -148,6 +148,10 @@ export const ENCRYPTION_MIDDLEWARE_NAME = 'CifraEncryptionMiddleware';
  * The async cipher is still the win the architecture claims — Argon2id, AES-GCM
  * and a non-extractable `CryptoKey` are all unreachable synchronously. It just
  * needs this one adapter to coexist with IndexedDB's transaction model.
+ *
+ * The unit suites prove this against `fake-indexeddb`, whose scheduler is not a
+ * browser's. Issue #42 tracks demonstrating the same round-trip against a real
+ * engine once there is a UI path that writes a record.
  */
 function keepTransactionAlive<T>(work: Promise<T>): Promise<T> {
   return Dexie.waitFor(work);
