@@ -166,9 +166,27 @@ export const ENCRYPTION_MIDDLEWARE_NAME = 'CifraEncryptionMiddleware';
  * and a non-extractable `CryptoKey` are all unreachable synchronously. It just
  * needs this one adapter to coexist with IndexedDB's transaction model.
  *
- * The unit suites prove this against `fake-indexeddb`, whose scheduler is not a
- * browser's. Issue #42 tracks demonstrating the same round-trip against a real
- * engine once there is a UI path that writes a record.
+ * ## What a real browser actually does (#42, D20)
+ *
+ * The unit suites prove the need for this against `fake-indexeddb`, whose
+ * scheduler is not a browser's. `test/e2e/db-liveness.spec.ts` now runs the same
+ * paths in Chromium, and the mutation run there gave the opposite answer:
+ * deleting `Dexie.waitFor` fails 26 Node tests and **zero** browser tests.
+ *
+ * Measuring the two halves separately explains it. A Chromium IndexedDB
+ * transaction really does die across a task boundary — a plain transaction
+ * driven across `setTimeout(…, 0)` raises `TransactionInactiveError`. But Blink
+ * settles `crypto.subtle.encrypt` inside the *same* task: it resolves ahead of
+ * an unclamped `MessageChannel` post, at 64 B, 64 KiB and 1 MiB alike. So the
+ * await below never crosses the boundary in Chromium and this wrapper has
+ * nothing to keep alive there.
+ *
+ * It stays regardless, and that is a decision rather than an oversight (D20).
+ * The same-task resolution is one engine's implementation detail: it is not what
+ * `fake-indexeddb` does, nothing promises it for Firefox or Safari, and a Blink
+ * that moved SubtleCrypto onto a thread hop would silently make every write path
+ * here depend on this wrapper again. The browser spec asserts the Blink
+ * behaviour explicitly, so that day is announced rather than discovered.
  */
 function keepTransactionAlive<T>(work: Promise<T>): Promise<T> {
   return Dexie.waitFor(work);
