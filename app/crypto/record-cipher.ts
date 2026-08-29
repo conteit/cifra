@@ -12,7 +12,7 @@
  *
  * ```
  *  offset  size  field
- *  0       1     version         (currently 0x01)
+ *  0       1     version         (currently 0x02)
  *  1       12    IV              (fresh CSPRNG bytes per call)
  *  13      n     ciphertext
  *  13+n    16    AES-GCM auth tag (appended by Web Crypto)
@@ -25,13 +25,29 @@
  * ## Authenticated context
  *
  * Every record is bound to its location by AES-GCM additional authenticated
- * data (AAD): the envelope version, the table name, and the record's primary
- * key. Without that binding an attacker with write access to the IndexedDB file
- * could move a valid blob from one row to another — swapping the amount of one
- * transaction onto another, or replaying a deleted record — and the auth tag
- * would still verify, because GCM authenticates the payload and not where it
- * was found. The AAD is reconstructed at decryption time from the row being
- * read, so a relocated blob simply fails to authenticate.
+ * data (AAD): the envelope version, the table name, the record's primary key,
+ * and a caller-supplied, ordered list of **bound fields**. Without that binding
+ * an attacker with write access to the IndexedDB file could move a valid blob
+ * from one row to another — swapping the amount of one transaction onto
+ * another, or replaying a deleted record — and the auth tag would still verify,
+ * because GCM authenticates the payload and not where it was found. The AAD is
+ * reconstructed at decryption time from the row being read, so a relocated blob
+ * simply fails to authenticate.
+ *
+ * The bound fields exist because a record's *location* is not the only thing
+ * that lives outside the ciphertext. A row also carries plaintext-indexed
+ * columns — a transaction's `date` and `type` — that IndexedDB must be able to
+ * range-query and that therefore cannot be encrypted. Before issue #51 those
+ * columns sat outside the authenticated envelope: rewriting them directly in
+ * the database produced a row that still decrypted cleanly, so a flipped `type`
+ * silently moved money between the cash and electronic ledgers and a rewritten
+ * `date` silently moved it between months. Binding them into the AAD makes such
+ * a row fail authentication instead.
+ *
+ * This module still does not know the record schema. It is handed name/value
+ * pairs and frames them; **which** columns are bound, in **which** order, and
+ * how their values canonicalise is the db layer's allowlist decision
+ * (`app/db/schema.ts`, `app/db/record-serialization.ts`).
  *
  * Pure TypeScript. Per the layer contract it imports neither React nor Dexie.
  * Serialization is deliberately *not* handled here: this module moves bytes, and
@@ -49,8 +65,20 @@ import { DATA_KEY_ALGORITHM_NAME, DATA_KEY_LENGTH_BITS } from './key-wrap';
  * written: a future migration can read a v1 blob, decrypt it, and re-emit v2
  * without guessing. The byte is covered by the AAD, so it cannot be edited to
  * steer a reader towards a weaker future format.
+ *
+ * **Version 2 (issue #51)** added the bound-field section to the AAD. Version 1
+ * bound only the table and the record id, so its AAD is a different byte string
+ * and a v1 blob cannot authenticate under a v2 reader. That is exactly what the
+ * version byte is for: a v1 envelope is rejected with
+ * `envelope/unsupported-version` — a diagnosis — rather than with the
+ * indistinguishable `decrypt/failed` a silent layout change would have produced.
+ * No migration code ships with the bump because no vault exists to migrate:
+ * Phase 1 shipped no user-facing write path (vault setup is #9, still open), so
+ * the only v1 blobs that ever existed were written by tests. Doing this later,
+ * against real vaults, would have meant a read-decrypt-re-encrypt pass over
+ * every record while the user waits.
  */
-export const RECORD_ENVELOPE_VERSION = 1;
+export const RECORD_ENVELOPE_VERSION = 2;
 
 /** IV length in bytes — 96 bits, the size AES-GCM is specified for. */
 export const IV_LENGTH_BYTES = 12;
@@ -74,22 +102,64 @@ export const MIN_ENVELOPE_LENGTH_BYTES =
  */
 export const MAX_PLAINTEXT_BYTES = 16 * 1024 * 1024;
 
-/** Largest accepted table name or record id, in UTF-8 bytes. */
+/**
+ * Largest accepted table name, record id, or bound field name/value, in UTF-8
+ * bytes.
+ */
 export const MAX_CONTEXT_FIELD_BYTES = 512;
 
 /**
- * Where a record lives. Bound into the ciphertext as AAD, so a blob only
- * decrypts in the row it was written to.
+ * Most bound fields one record may carry.
+ *
+ * A bound field is an *indexed* column, and IndexedDB indexes are a scarce,
+ * hand-declared resource: a table with sixteen of them is a design error, not a
+ * large record. The cap keeps AAD construction bounded no matter what a caller
+ * passes, so a runaway list cannot be assembled into a multi-megabyte buffer on
+ * the write path.
+ */
+export const MAX_BOUND_FIELDS = 16;
+
+/**
+ * One plaintext column authenticated alongside the record.
+ *
+ * The **name** is bound as well as the value, so renaming a column, or swapping
+ * two columns' values, changes the AAD. `value` is the canonical string form
+ * the db layer stores; this module neither parses nor normalises it.
+ */
+export interface BoundField {
+  /** Column name, e.g. `date`. Non-empty. */
+  readonly name: string;
+  /** The column's stored value, canonicalised by the db layer. Non-empty. */
+  readonly value: string;
+}
+
+/**
+ * Where a record lives, and which of its plaintext columns are authenticated
+ * with it. Bound into the ciphertext as AAD, so a blob only decrypts in the row
+ * it was written to, with the column values it was written with.
  *
  * `recordId` is the record's primary key as a string. Cifra's records carry
  * client-generated string ids (Phase 8 sync needs stable, device-independent
  * keys), so the db layer always has this value before it writes.
+ *
+ * `boundFields` is **required, never optional**. An optional list would default
+ * to "bind nothing", which is precisely the default that produced issue #51:
+ * the safe choice has to be the one a caller cannot reach by omission. A table
+ * with no bound columns passes an empty array and says so.
  */
 export interface RecordContext {
   /** Dexie table name, e.g. `transactions`. */
   readonly table: string;
   /** Primary key of the row this payload belongs to. */
   readonly recordId: string;
+  /**
+   * Plaintext columns bound into the AAD, in the order the db layer's allowlist
+   * declares them. The order is part of the encoding: the same fields supplied
+   * in a different order produce a different AAD and will not authenticate, so
+   * the db layer derives the order from the allowlist rather than from a call
+   * site.
+   */
+  readonly boundFields: readonly BoundField[];
 }
 
 /** Machine-readable reason a record cipher call was rejected. */
@@ -190,13 +260,79 @@ function encodeContextField(value: unknown, field: string): Uint8Array {
 }
 
 /**
+ * Encodes and validates the bound-field list, preserving the caller's order.
+ *
+ * @throws {RecordCipherError} with code `context/invalid`.
+ */
+function encodeBoundFields(
+  boundFields: unknown,
+): Array<[Uint8Array, Uint8Array]> {
+  if (!Array.isArray(boundFields)) {
+    throw new RecordCipherError(
+      'context/invalid',
+      'Record context boundFields must be an array; pass [] for a table with no bound columns',
+    );
+  }
+  if (boundFields.length > MAX_BOUND_FIELDS) {
+    throw new RecordCipherError(
+      'context/invalid',
+      `Record context must bind at most ${MAX_BOUND_FIELDS} fields`,
+    );
+  }
+
+  const seen = new Set<string>();
+  return boundFields.map((field, index) => {
+    if (typeof field !== 'object' || field === null) {
+      throw new RecordCipherError(
+        'context/invalid',
+        `Record context boundFields[${index}] must be an object with a name and a value`,
+      );
+    }
+    const { name, value } = field as BoundField;
+    const nameBytes = encodeContextField(name, `boundFields[${index}].name`);
+    // A duplicate name would make the AAD ambiguous about which column carries
+    // which value, and is always a db-layer bug — the allowlist derives the
+    // list from a set of distinct column names.
+    if (seen.has(name)) {
+      throw new RecordCipherError(
+        'context/invalid',
+        `Record context binds the field '${name}' more than once`,
+      );
+    }
+    seen.add(name);
+    return [
+      nameBytes,
+      encodeContextField(value, `boundFields[${index}].value`),
+    ];
+  });
+}
+
+/**
  * Builds the AES-GCM additional authenticated data for a record.
  *
- * Each variable-length field is preceded by its length as a big-endian uint32,
+ * ## Layout
+ *
+ * ```
+ *  version                                   1 byte
+ *  u32be(len(table))    || table
+ *  u32be(len(recordId)) || recordId
+ *  u32be(count of bound fields)              4 bytes
+ *  for each bound field, in order:
+ *      u32be(len(name))  || name
+ *      u32be(len(value)) || value
+ * ```
+ *
+ * Every variable-length piece is preceded by its length as a big-endian uint32,
  * so the encoding is injective: `{table: 'ab', recordId: 'c'}` and
- * `{table: 'a', recordId: 'bc'}` produce different AAD. A plain concatenation
- * would collide, which would let a blob be moved between two rows whose names
- * and ids happen to run together the same way.
+ * `{table: 'a', recordId: 'bc'}` produce different AAD, and so do
+ * `{date: 'x', type: 'yz'}` and `{date: 'xy', type: 'z'}`. A plain
+ * concatenation would collide, which would let a blob be moved between two rows
+ * whose names, ids and column values happen to run together the same way.
+ *
+ * The count is framed too. Injectivity does not depend on it — the length
+ * prefixes already carry the structure — but it authenticates the *arity* of
+ * the bound list explicitly, so a future reader that binds fewer fields than
+ * the writer did cannot be talked into believing it saw the whole list.
  *
  * @throws {RecordCipherError} with code `context/invalid`.
  */
@@ -207,21 +343,39 @@ function buildAdditionalData(
   if (typeof context !== 'object' || context === null) {
     throw new RecordCipherError(
       'context/invalid',
-      'Record context must be an object with a table and a recordId',
+      'Record context must be an object with a table, a recordId and boundFields',
     );
   }
   const table = encodeContextField(context.table, 'table');
   const recordId = encodeContextField(context.recordId, 'recordId');
+  const bound = encodeBoundFields(context.boundFields);
 
-  const aad = new Uint8Array(
-    new ArrayBuffer(1 + 4 + table.length + 4 + recordId.length),
-  );
+  let size = 1 + 4 + table.length + 4 + recordId.length + 4;
+  for (const [name, value] of bound) {
+    size += 4 + name.length + 4 + value.length;
+  }
+
+  const aad = new Uint8Array(new ArrayBuffer(size));
   const view = new DataView(aad.buffer);
-  aad[0] = version;
-  view.setUint32(1, table.length, false);
-  aad.set(table, 5);
-  view.setUint32(5 + table.length, recordId.length, false);
-  aad.set(recordId, 9 + table.length);
+  let offset = 0;
+
+  const writeChunk = (bytes: Uint8Array): void => {
+    view.setUint32(offset, bytes.length, false);
+    offset += 4;
+    aad.set(bytes, offset);
+    offset += bytes.length;
+  };
+
+  aad[offset] = version;
+  offset += 1;
+  writeChunk(table);
+  writeChunk(recordId);
+  view.setUint32(offset, bound.length, false);
+  offset += 4;
+  for (const [name, value] of bound) {
+    writeChunk(name);
+    writeChunk(value);
+  }
   return aad;
 }
 
@@ -241,8 +395,9 @@ function buildAdditionalData(
  * @param dataKey non-extractable AES-256-GCM key from the wrapping layer.
  * @param plaintext the record's sensitive fields, already serialized to bytes by
  * the db layer.
- * @param context the table and primary key this payload belongs to; bound into
- * the ciphertext as AAD and required again, unchanged, to decrypt.
+ * @param context the table, primary key and bound plaintext columns this
+ * payload belongs to; bound into the ciphertext as AAD and required again,
+ * unchanged and in the same order, to decrypt.
  * @returns the blob to store in the record's single encrypted field.
  * @throws {RecordCipherError} for an invalid key, a non-`Uint8Array` or
  * oversized plaintext, an invalid context, or a missing Web Crypto
@@ -299,9 +454,10 @@ export async function encryptRecord(
 /**
  * Decrypts a blob produced by {@link encryptRecord}.
  *
- * `context` must be the table and primary key of the row the blob was read
- * from. Any mismatch — a different row, a different table, a different key, a
- * flipped bit anywhere in the ciphertext, the tag, or the IV — fails with
+ * `context` must be the table, primary key and bound column values of the row
+ * the blob was read from. Any mismatch — a different row, a different table, a
+ * rewritten bound column, a different key, a flipped bit anywhere in the
+ * ciphertext, the tag, or the IV — fails with
  * `decrypt/failed` and no partial result. The single error code is intentional:
  * telling a caller *why* authentication failed leaks an oracle, and none of the
  * causes are separately actionable.
