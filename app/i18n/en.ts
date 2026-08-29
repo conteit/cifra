@@ -45,6 +45,13 @@ export const en = {
   nav_import: 'Import',
   nav_account: 'Account',
 
+  // App shell chrome — copy the shell needs but cannot resolve itself
+  // (like the primitives, the shell has no locale; the route passes it in).
+  shell_nav_label: 'Main navigation',
+  shell_skip_to_content: 'Skip to content',
+  shell_more: 'More',
+  shell_soon: 'Soon',
+
   // Sync states
   sync_synced: 'Synced',
   sync_dirty: 'Saving...',

@@ -54,6 +54,12 @@ export const it: Record<
   nav_import: 'Importa',
   nav_account: 'Account',
 
+  // Struttura dell'app
+  shell_nav_label: 'Navigazione principale',
+  shell_skip_to_content: 'Vai al contenuto',
+  shell_more: 'Altro',
+  shell_soon: 'Presto',
+
   // Sync states
   sync_synced: 'Sincronizzato',
   sync_dirty: 'Da salvare...',

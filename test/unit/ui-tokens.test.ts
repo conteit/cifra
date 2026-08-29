@@ -8,8 +8,9 @@ import { describe, expect, it } from 'vitest';
  *
  * "Semantic design tokens only — components reference token names, never raw
  * colour or size values" is otherwise a reviewer's job, and reviewers miss a
- * `#fff` in a 200-line component. This suite reads the sources under `app/ui`
- * and fails on the concrete ways a raw value gets in:
+ * `#fff` in a 200-line component. This suite reads every source that paints
+ * something — the `app/ui` primitives, the `app/shell` layout, and the route
+ * modules — and fails on the concrete ways a raw value gets in:
  *
  *   1. literal colours (`#rrggbb`, `rgb(...)`, `hsl(...)`, named CSS colours);
  *   2. Tailwind arbitrary values (`bg-[#fff]`, `w-[13px]`, `text-[0.8rem]`);
@@ -25,15 +26,24 @@ import { describe, expect, it } from 'vitest';
  * fails at the exact line rather than somewhere downstream.
  */
 
-const uiDir = fileURLToPath(new URL('../../app/ui', import.meta.url));
+/**
+ * Directories scanned, relative to `app/`. `ui` holds the primitives, `shell`
+ * the layout that composes them, and `routes` the pages that mount inside it —
+ * V1-3 binds all three, so all three are scanned. A new painting directory
+ * under `app/` must be added here.
+ */
+const scannedDirs = ['ui', 'shell', 'routes'] as const;
 
 function sourceFiles(): Array<{ name: string; text: string }> {
-  return readdirSync(uiDir)
-    .filter((name) => name.endsWith('.ts') || name.endsWith('.tsx'))
-    .map((name) => ({
-      name,
-      text: readFileSync(join(uiDir, name), 'utf8'),
-    }));
+  return scannedDirs.flatMap((dir) => {
+    const abs = fileURLToPath(new URL(`../../app/${dir}`, import.meta.url));
+    return readdirSync(abs)
+      .filter((name) => name.endsWith('.ts') || name.endsWith('.tsx'))
+      .map((name) => ({
+        name: `${dir}/${name}`,
+        text: readFileSync(join(abs, name), 'utf8'),
+      }));
+  });
 }
 
 /** Strips block and line comments so prose about `#fff` never trips the scan. */
@@ -98,17 +108,22 @@ const rules: Rule[] = [
   },
 ];
 
-describe('app/ui components use semantic tokens only (V1-3)', () => {
+describe('app components use semantic tokens only (V1-3)', () => {
   const files = sourceFiles();
 
-  it('finds the primitives to check', () => {
+  it('finds the sources to check', () => {
     expect(files.map((f) => f.name).sort()).toEqual([
-      'button.tsx',
-      'card.tsx',
-      'cx.ts',
-      'index.ts',
-      'input.tsx',
-      'modal.tsx',
+      'routes/app-layout.tsx',
+      'routes/home.tsx',
+      'shell/app-shell.tsx',
+      'shell/index.ts',
+      'shell/nav-items.ts',
+      'ui/button.tsx',
+      'ui/card.tsx',
+      'ui/cx.ts',
+      'ui/index.ts',
+      'ui/input.tsx',
+      'ui/modal.tsx',
     ]);
   });
 
