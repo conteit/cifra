@@ -49,6 +49,7 @@ import {
 } from './kdf-worker-client';
 
 export {
+  ARGON2ID_COST_MODEL,
   ARGON2ID_DEFAULT_PARAMS,
   type Argon2idParams,
   assertArgon2idParams,
@@ -56,6 +57,7 @@ export {
   type KdfErrorCode,
   MASTER_KEY_LENGTH_BYTES,
   MAX_PASSWORD_LENGTH,
+  predictedUnlockMs,
   SALT_LENGTH_BYTES,
 } from './kdf-params';
 export type {

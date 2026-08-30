@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ARGON2ID_COST_MODEL,
   ARGON2ID_DEFAULT_PARAMS,
   type Argon2idParams,
   assertArgon2idParams,
@@ -7,6 +8,7 @@ import {
   generateSalt,
   KdfError,
   MASTER_KEY_LENGTH_BYTES,
+  predictedUnlockMs,
   SALT_LENGTH_BYTES,
 } from '../../../app/crypto/kdf';
 import { argon2idDigestForVectorTests } from '../../../app/crypto/kdf-worker-body';
@@ -122,10 +124,15 @@ describe('generateSalt', () => {
 });
 
 describe('ARGON2ID_DEFAULT_PARAMS', () => {
-  it('matches the documented architecture parameters (64 MiB memory)', () => {
+  it('matches the documented architecture parameters (64 MiB x 3)', () => {
     expect(ARGON2ID_DEFAULT_PARAMS.memorySizeKib).toBe(65536);
     expect(ARGON2ID_DEFAULT_PARAMS.parallelism).toBe(1);
-    expect(ARGON2ID_DEFAULT_PARAMS.iterations).toBeGreaterThanOrEqual(1);
+    // Pinned exactly, not as a range. Every vault stores the parameters it was
+    // created with, so moving this number after the first vault exists is a
+    // re-derivation and re-wrap of every master key, not a config edit (D23).
+    // If this line has to change, the change is a migration and needs its own
+    // decision — which is what #29 concluded when it re-measured and kept 3.
+    expect(ARGON2ID_DEFAULT_PARAMS.iterations).toBe(3);
   });
 
   it('derives a 256-bit key', () => {
@@ -134,6 +141,119 @@ describe('ARGON2ID_DEFAULT_PARAMS', () => {
 
   it('is frozen so a caller cannot mutate the shared default', () => {
     expect(Object.isFrozen(ARGON2ID_DEFAULT_PARAMS)).toBe(true);
+  });
+});
+
+/**
+ * D23 — the ~500 ms unlock budget, made arguable.
+ *
+ * `docs/architecture.md` §Crypto asks for an unlock "tuned to roughly 500 ms on
+ * the target device". #29 re-measured the reference machine (64 MiB x 3 =
+ * 103.8 ms of digest in a Chromium 151 worker on an Apple M4, 102.7 ms in Node
+ * 24.14) and kept the parameters, because *no phone has ever been measured* and
+ * the prediction from the measurement that does exist already lands in the band.
+ *
+ * These tests do not read a clock. They assert the *model* in
+ * `ARGON2ID_COST_MODEL` — a measured reference cost, a stated slowdown range,
+ * and a stated budget — so they behave identically on an M4 and on a slow CI
+ * runner, and so widening the model to accommodate a parameter change is as
+ * visible as changing the parameter.
+ */
+describe('ARGON2ID_DEFAULT_PARAMS — the ~500 ms unlock budget (D23)', () => {
+  it('lands inside the budget across the whole assumed slowdown range', () => {
+    const predicted = predictedUnlockMs(ARGON2ID_DEFAULT_PARAMS);
+    expect(predicted.min).toBeGreaterThanOrEqual(
+      ARGON2ID_COST_MODEL.unlockBudgetMs.min,
+    );
+    expect(predicted.max).toBeLessThanOrEqual(
+      ARGON2ID_COST_MODEL.unlockBudgetMs.max,
+    );
+  });
+
+  /**
+   * The upper edge, asserted as a counterfactual so the band cannot be quietly
+   * widened. One more pass costs a third more work: 519-830 ms becomes
+   * 692-1106 ms, which leaves the budget at the slow end. Raising `iterations`
+   * to 4 therefore requires *either* a real-hardware measurement that refutes
+   * the 8x assumption *or* an explicit decision to move the budget — and this
+   * test fails for both until the decision is written down.
+   */
+  it('would leave the budget at t = 4, so a raise is not a free edit', () => {
+    const predicted = predictedUnlockMs({
+      ...ARGON2ID_DEFAULT_PARAMS,
+      iterations: 4,
+    });
+    expect(predicted.max).toBeGreaterThan(
+      ARGON2ID_COST_MODEL.unlockBudgetMs.max,
+    );
+  });
+
+  /**
+   * The lower edge is *not* the budget — t = 2 predicts 346-554 ms, which is
+   * still "roughly 500 ms". What stops the default drifting down is published
+   * guidance: 64 MiB x 3 passes is RFC 9106 §4's **second recommended option**,
+   * and every OWASP Argon2id minimum (m = 46 MiB t = 1, m = 19 MiB t = 2,
+   * m = 12 MiB t = 3, ...) is weaker still.
+   *
+   * RFC 9106's second option specifies 4 lanes where this app uses 1. That is a
+   * deliberate, documented deviation, not an oversight: hash-wasm runs Argon2id
+   * single-threaded, so lanes cost the same wall time while splitting the
+   * memory into smaller slices — `p = 1` keeps the memory-hardness undivided at
+   * identical `m x t` work. The floor is therefore asserted on memory and
+   * passes, which are the two parameters that set the cost.
+   *
+   * This floor lives here, on the *default*, and deliberately not in
+   * `assertArgon2idParams`: a validator floor raised after vaults exist would
+   * refuse to unlock any vault created below it, which is the data destruction
+   * D19's floor note exists to avoid.
+   */
+  it('meets RFC 9106 §4 second recommended option in memory and passes', () => {
+    expect(ARGON2ID_DEFAULT_PARAMS.memorySizeKib).toBeGreaterThanOrEqual(
+      65_536,
+    );
+    expect(ARGON2ID_DEFAULT_PARAMS.iterations).toBeGreaterThanOrEqual(3);
+  });
+
+  /**
+   * The defaults are a *stored* constant, never a runtime measurement.
+   *
+   * Auto-tuning cost to the device — the obvious way to "hit 500 ms everywhere"
+   * — would make the same password derive a different key on every device, so a
+   * vault created on a laptop could never be unlocked on the owner's phone.
+   * Two properties are asserted, because either one alone can be defeated:
+   * every field is a plain data property (a getter could measure on read and
+   * still look frozen), and repeated reads across elapsed time are identical.
+   *
+   * The complementary half — that `deriveMasterKey` honours the parameters it
+   * is *handed* rather than parameters of its own choosing — is covered by
+   * "differs for different params" and "unlocks a vault created with older
+   * stored params" below.
+   */
+  it('is a stored constant, not a runtime measurement', () => {
+    for (const key of ['memorySizeKib', 'iterations', 'parallelism'] as const) {
+      const descriptor = Object.getOwnPropertyDescriptor(
+        ARGON2ID_DEFAULT_PARAMS,
+        key,
+      );
+      expect(descriptor?.get).toBeUndefined();
+      expect(typeof descriptor?.value).toBe('number');
+    }
+
+    const before = { ...ARGON2ID_DEFAULT_PARAMS };
+    const firstPrediction = predictedUnlockMs(ARGON2ID_DEFAULT_PARAMS);
+    const busyUntil = performance.now() + 5;
+    while (performance.now() < busyUntil) {
+      // Burn a few milliseconds so a params object or a model that sampled the
+      // clock would have something different to report on the second read.
+    }
+    expect({ ...ARGON2ID_DEFAULT_PARAMS }).toEqual(before);
+    expect(predictedUnlockMs(ARGON2ID_DEFAULT_PARAMS)).toEqual(firstPrediction);
+
+    expect(Object.isFrozen(ARGON2ID_COST_MODEL)).toBe(true);
+    expect(Object.isFrozen(ARGON2ID_COST_MODEL.targetDeviceSlowdown)).toBe(
+      true,
+    );
+    expect(Object.isFrozen(ARGON2ID_COST_MODEL.unlockBudgetMs)).toBe(true);
   });
 });
 
@@ -272,9 +392,22 @@ describe('assertArgon2idParams — security bounds', () => {
     }
   });
 
-  it('leaves headroom above the current default for #29 to raise iterations', () => {
-    // The ceiling must not be a bound #29 immediately has to raise. Assert the
-    // slack explicitly so shrinking the ceiling is a visible decision.
+  /**
+   * D19 set this ceiling with 5.3x of slack over the shipped default, expressly
+   * so that #29 could raise the iteration count without moving a security bound.
+   * #29 has since measured and **kept** 64 MiB x 3 (D23), so the slack is no
+   * longer earmarked; it is now the margin that keeps a future re-tune — the
+   * real-hardware measurement #29 could not perform — from turning into a
+   * ceiling change made under pressure.
+   *
+   * It stays asserted at 5x rather than being relaxed to the 5.33x that happens
+   * to hold today: this is a bound #52 measured, and shrinking it should cost a
+   * failing test and a written decision. Note that it is genuinely load-bearing
+   * in both directions — a default of 64 MiB x 4 would drop the ratio to 4.0 and
+   * fail here, which is one of the two guards a future raise has to answer for
+   * (the other is the unlock budget, D23).
+   */
+  it('keeps at least 5x headroom between the shipped default and the ceiling', () => {
     const defaultCost =
       ARGON2ID_DEFAULT_PARAMS.memorySizeKib *
       ARGON2ID_DEFAULT_PARAMS.iterations;
@@ -283,8 +416,9 @@ describe('assertArgon2idParams — security bounds', () => {
       ARGON2ID_COST_CEILING_PARAMS.iterations;
     expect(ceilingCost / defaultCost).toBeGreaterThanOrEqual(5);
 
-    // Raising only the iteration count, the parameter #29 is expected to move,
-    // must stay inside the ceiling up to at least 5x today's value.
+    // ...and the headroom is reachable by moving the parameter a re-tune would
+    // move, not just by arithmetic on the product: 5x the shipped iteration
+    // count must still validate at the mandated memory size.
     expect(() =>
       assertArgon2idParams({
         ...ARGON2ID_DEFAULT_PARAMS,
