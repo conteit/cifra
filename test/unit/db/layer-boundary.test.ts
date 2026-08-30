@@ -45,6 +45,10 @@ describe('the walker sees the layers it claims to check', () => {
   it('found both layers', () => {
     expect(CRYPTO_MODULES).toEqual([
       'app/crypto/bytes.ts',
+      'app/crypto/kdf-params.ts',
+      'app/crypto/kdf-worker-body.ts',
+      'app/crypto/kdf-worker-client.ts',
+      'app/crypto/kdf-worker.ts',
       'app/crypto/kdf.ts',
       'app/crypto/key-wrap.ts',
       'app/crypto/record-cipher.ts',

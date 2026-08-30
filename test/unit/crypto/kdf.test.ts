@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   ARGON2ID_DEFAULT_PARAMS,
   type Argon2idParams,
-  argon2idDigestForVectorTests,
   assertArgon2idParams,
   deriveMasterKey,
   generateSalt,
@@ -10,6 +9,32 @@ import {
   MASTER_KEY_LENGTH_BYTES,
   SALT_LENGTH_BYTES,
 } from '../../../app/crypto/kdf';
+import { argon2idDigestForVectorTests } from '../../../app/crypto/kdf-worker-body';
+import { recordingKdfWorkerFactory } from '../../support/kdf-worker-port';
+
+/**
+ * `deriveMasterKey` runs Argon2id in a Web Worker since #61, and this project
+ * is the browser-free `unit` one — Node 24 has `node:worker_threads`, not the
+ * DOM `Worker`. Every call below therefore injects the in-process port from
+ * `test/support/kdf-worker-port.ts`, which routes the request through
+ * `structuredClone` into the real `handleDeriveRequest`. What these tests
+ * exercise is the shipping worker body across a real serialization boundary;
+ * what they do not exercise is the `Worker` constructor, which
+ * `test/e2e/kdf-worker.spec.ts` covers in Chromium.
+ *
+ * The boundary's own properties — that no bytes cross it, that the worker is
+ * always terminated, that bad parameters never spawn one — are asserted in
+ * `kdf-worker.test.ts`, not here.
+ */
+function derive(
+  password: string,
+  salt: Uint8Array,
+  params?: Argon2idParams,
+): Promise<CryptoKey> {
+  return deriveMasterKey(password, salt, params, {
+    createWorker: recordingKdfWorkerFactory(),
+  });
+}
 
 /**
  * The cheapest parameters the production gate accepts — exactly the strength
@@ -167,7 +192,7 @@ describe('assertArgon2idParams', () => {
  * The security bounds, one uniquely-attributable case per bound.
  *
  * Each rejected case sits *one step* outside exactly one bound and comfortably
- * inside every other, so removing any single bound from `app/crypto/kdf.ts`
+ * inside every other, so removing any single bound from `app/crypto/kdf-params.ts`
  * makes exactly the case named for it fail. The numbers are written out here
  * rather than imported from the module on purpose: importing the constant would
  * make the test move with the value it is supposed to pin.
@@ -293,7 +318,7 @@ describe('deriveMasterKey — parameters are bounded before any derivation', () 
   it('rejects 1 GiB x 64 passes in microseconds, not the 36 s it would cost', async () => {
     const start = performance.now();
     await expect(
-      deriveMasterKey('correct horse', SALT_A, {
+      derive('correct horse', SALT_A, {
         memorySizeKib: 1_048_576,
         iterations: 64,
         parallelism: 1,
@@ -305,7 +330,7 @@ describe('deriveMasterKey — parameters are bounded before any derivation', () 
   it('rejects params that are merely too weak just as cheaply', async () => {
     const start = performance.now();
     await expect(
-      deriveMasterKey('correct horse', SALT_A, {
+      derive('correct horse', SALT_A, {
         memorySizeKib: 8,
         iterations: 1,
         parallelism: 1,
@@ -317,14 +342,14 @@ describe('deriveMasterKey — parameters are bounded before any derivation', () 
 
 describe('deriveMasterKey — input validation', () => {
   it('rejects an empty password', async () => {
-    await expect(
-      deriveMasterKey('', SALT_A, CHEAP_PARAMS),
-    ).rejects.toMatchObject({ code: 'password/empty' });
+    await expect(derive('', SALT_A, CHEAP_PARAMS)).rejects.toMatchObject({
+      code: 'password/empty',
+    });
   });
 
   it('rejects an absurdly long password', async () => {
     await expect(
-      deriveMasterKey('x'.repeat(1025), SALT_A, CHEAP_PARAMS),
+      derive('x'.repeat(1025), SALT_A, CHEAP_PARAMS),
     ).rejects.toMatchObject({ code: 'password/too-long' });
   });
 
@@ -334,7 +359,7 @@ describe('deriveMasterKey — input validation', () => {
     let message = '';
     let stack = '';
     try {
-      await deriveMasterKey(password, SALT_A, CHEAP_PARAMS);
+      await derive(password, SALT_A, CHEAP_PARAMS);
     } catch (error) {
       message = (error as Error).message;
       stack = (error as Error).stack ?? '';
@@ -348,7 +373,7 @@ describe('deriveMasterKey — input validation', () => {
     'rejects a %i-byte salt (only 16 is valid)',
     async (length) => {
       await expect(
-        deriveMasterKey('correct horse', new Uint8Array(length), CHEAP_PARAMS),
+        derive('correct horse', new Uint8Array(length), CHEAP_PARAMS),
       ).rejects.toMatchObject({ code: 'salt/invalid-length' });
     },
   );
@@ -356,13 +381,13 @@ describe('deriveMasterKey — input validation', () => {
   it('rejects a non-Uint8Array salt', async () => {
     await expect(
       // biome-ignore lint/suspicious/noExplicitAny: deliberate wrong-type input
-      deriveMasterKey('correct horse', 'somesalt16bytes!' as any, CHEAP_PARAMS),
+      derive('correct horse', 'somesalt16bytes!' as any, CHEAP_PARAMS),
     ).rejects.toMatchObject({ code: 'salt/invalid-length' });
   });
 
   it('rejects invalid params', async () => {
     await expect(
-      deriveMasterKey('correct horse', SALT_A, {
+      derive('correct horse', SALT_A, {
         memorySizeKib: 65536,
         iterations: 0,
         parallelism: 1,
@@ -372,14 +397,14 @@ describe('deriveMasterKey — input validation', () => {
 
   it('does not mutate the caller-supplied salt', async () => {
     const salt = new Uint8Array(SALT_A);
-    await deriveMasterKey('correct horse', salt, CHEAP_PARAMS);
+    await derive('correct horse', salt, CHEAP_PARAMS);
     expect(Array.from(salt)).toEqual(Array.from(SALT_A));
   });
 });
 
 describe('deriveMasterKey — key shape', () => {
   it('returns a non-extractable AES-KW CryptoKey usable only for wrapping', async () => {
-    const key = await deriveMasterKey('correct horse', SALT_A, CHEAP_PARAMS);
+    const key = await derive('correct horse', SALT_A, CHEAP_PARAMS);
 
     expect(key.extractable).toBe(false);
     expect(key.type).toBe('secret');
@@ -391,12 +416,12 @@ describe('deriveMasterKey — key shape', () => {
   });
 
   it('refuses to export the derived key material', async () => {
-    const key = await deriveMasterKey('correct horse', SALT_A, CHEAP_PARAMS);
+    const key = await derive('correct horse', SALT_A, CHEAP_PARAMS);
     await expect(crypto.subtle.exportKey('raw', key)).rejects.toThrow();
   });
 
   it('can wrap and unwrap a data key (the step-3 contract)', async () => {
-    const master = await deriveMasterKey('correct horse', SALT_A, CHEAP_PARAMS);
+    const master = await derive('correct horse', SALT_A, CHEAP_PARAMS);
     const dataKey = await crypto.subtle.generateKey(
       { name: 'AES-GCM', length: 256 },
       true,
@@ -428,26 +453,26 @@ describe('deriveMasterKey — key shape', () => {
 
 describe('deriveMasterKey — determinism', () => {
   it('is deterministic for the same password, salt and params', async () => {
-    const a = await deriveMasterKey('correct horse', SALT_A, CHEAP_PARAMS);
-    const b = await deriveMasterKey('correct horse', SALT_A, CHEAP_PARAMS);
+    const a = await derive('correct horse', SALT_A, CHEAP_PARAMS);
+    const b = await derive('correct horse', SALT_A, CHEAP_PARAMS);
     expect(await keyFingerprint(a)).toBe(await keyFingerprint(b));
   });
 
   it('differs for a different password', async () => {
-    const a = await deriveMasterKey('correct horse', SALT_A, CHEAP_PARAMS);
-    const b = await deriveMasterKey('correct horsf', SALT_A, CHEAP_PARAMS);
+    const a = await derive('correct horse', SALT_A, CHEAP_PARAMS);
+    const b = await derive('correct horsf', SALT_A, CHEAP_PARAMS);
     expect(await keyFingerprint(a)).not.toBe(await keyFingerprint(b));
   });
 
   it('differs for a different salt', async () => {
-    const a = await deriveMasterKey('correct horse', SALT_A, CHEAP_PARAMS);
-    const b = await deriveMasterKey('correct horse', SALT_B, CHEAP_PARAMS);
+    const a = await derive('correct horse', SALT_A, CHEAP_PARAMS);
+    const b = await derive('correct horse', SALT_B, CHEAP_PARAMS);
     expect(await keyFingerprint(a)).not.toBe(await keyFingerprint(b));
   });
 
   it('differs for different params (so stored params are load-bearing)', async () => {
-    const a = await deriveMasterKey('correct horse', SALT_A, CHEAP_PARAMS);
-    const b = await deriveMasterKey('correct horse', SALT_A, {
+    const a = await derive('correct horse', SALT_A, CHEAP_PARAMS);
+    const b = await derive('correct horse', SALT_A, {
       ...CHEAP_PARAMS,
       iterations: CHEAP_PARAMS.iterations + 1,
     });
@@ -464,16 +489,12 @@ describe('deriveMasterKey — determinism', () => {
       iterations: 3,
       parallelism: 1,
     };
-    const atCreation = await deriveMasterKey('correct horse', SALT_A, legacy);
-    const atUnlock = await deriveMasterKey('correct horse', SALT_A, legacy);
+    const atCreation = await derive('correct horse', SALT_A, legacy);
+    const atUnlock = await derive('correct horse', SALT_A, legacy);
     expect(await keyFingerprint(atUnlock)).toBe(
       await keyFingerprint(atCreation),
     );
-    const withDefaults = await deriveMasterKey(
-      'correct horse',
-      SALT_A,
-      CHEAP_PARAMS,
-    );
+    const withDefaults = await derive('correct horse', SALT_A, CHEAP_PARAMS);
     expect(await keyFingerprint(withDefaults)).not.toBe(
       await keyFingerprint(atCreation),
     );
@@ -485,8 +506,8 @@ describe('deriveMasterKey — determinism', () => {
     expect(precomposed).not.toBe(decomposed);
     expect(precomposed.normalize('NFD')).toBe(decomposed.normalize('NFD'));
 
-    const a = await deriveMasterKey(precomposed, SALT_A, CHEAP_PARAMS);
-    const b = await deriveMasterKey(decomposed, SALT_A, CHEAP_PARAMS);
+    const a = await derive(precomposed, SALT_A, CHEAP_PARAMS);
+    const b = await derive(decomposed, SALT_A, CHEAP_PARAMS);
     expect(await keyFingerprint(a)).toBe(await keyFingerprint(b));
   });
 
@@ -494,14 +515,14 @@ describe('deriveMasterKey — determinism', () => {
     // NFKC would fold fullwidth U+FF41 onto ASCII 'a'; NFC does not.
     const ascii = 'abc';
     const fullwidth = '\uFF41bc';
-    const a = await deriveMasterKey(ascii, SALT_A, CHEAP_PARAMS);
-    const b = await deriveMasterKey(fullwidth, SALT_A, CHEAP_PARAMS);
+    const a = await derive(ascii, SALT_A, CHEAP_PARAMS);
+    const b = await derive(fullwidth, SALT_A, CHEAP_PARAMS);
     expect(await keyFingerprint(a)).not.toBe(await keyFingerprint(b));
   });
 
   it('is deterministic at production parameters', async () => {
-    const a = await deriveMasterKey('correct horse battery staple', SALT_A);
-    const b = await deriveMasterKey(
+    const a = await derive('correct horse battery staple', SALT_A);
+    const b = await derive(
       'correct horse battery staple',
       SALT_A,
       ARGON2ID_DEFAULT_PARAMS,
