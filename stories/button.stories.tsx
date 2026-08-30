@@ -1,8 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { Fragment } from 'react';
+import { Fragment, useState } from 'react';
 import { expect, fn, userEvent, waitFor, within } from 'storybook/test';
 
 import { Button, type ButtonProps, type ButtonVariant } from '../app/ui/button';
+import { Input } from '../app/ui/input';
 import { type Bilingual, type Locale, localeFrom, t } from './locale';
 import { resolveColorToken } from './token-probe';
 
@@ -32,6 +33,23 @@ const copy = {
   },
   formLegend: { en: 'Submit inside a form', it: 'Invio dentro un form' },
   submitted: { en: 'Submitted', it: 'Inviato' },
+  focusLegend: {
+    en: 'Focus survives the wait',
+    it: 'Il focus sopravvive all’attesa',
+  },
+  focusNote: {
+    en: 'Press Enter or Space on the button. It becomes busy without becoming `disabled`, so focus stays where the user put it instead of falling to the top of the document.',
+    it: 'Premi Invio o Spazio sul bottone. Diventa occupato senza diventare `disabled`, così il focus resta dove l’utente l’ha messo invece di cadere in cima al documento.',
+  },
+  keyboardLegend: {
+    en: 'Busy ignores the keyboard',
+    it: 'Occupato ignora la tastiera',
+  },
+  busyFormLegend: {
+    en: 'Busy submit inside a form',
+    it: 'Invio occupato dentro un form',
+  },
+  amountLabel: { en: 'Amount', it: 'Importo' },
 } satisfies Record<string, Bilingual>;
 
 const variants: ButtonVariant[] = ['primary', 'secondary', 'quiet'];
@@ -256,9 +274,185 @@ export const Loading: Story = {
     const button = within(canvasElement).getByRole('button');
     // `loading` is a promise to assistive tech and a lock at the same time.
     await expect(button).toHaveAttribute('aria-busy', 'true');
-    await expect(button).toBeDisabled();
+    // Soft-disabled, never natively disabled (#54): the native attribute would
+    // take the element out of the tab order and blur it. A screen reader still
+    // hears "dimmed"/"unavailable" plus "busy" from `aria-disabled`.
+    await expect(button).toHaveAttribute('aria-disabled', 'true');
+    await expect(button).not.toBeDisabled();
+    // Still reachable, which is the whole point of the soft form.
+    button.focus();
+    await expect(button).toHaveFocus();
     await userEvent.click(button);
     await expect(args.onClick).not.toHaveBeenCalled();
+    await expect(button).toHaveFocus();
+  },
+};
+
+/* ── #54: the busy button keeps the focus it was given ──────────────────── */
+
+/**
+ * A button that flips itself into `loading` when activated — the sign-in shape
+ * (#9), which is the first real consumer and the primary control on the first
+ * screen a user ever sees.
+ *
+ * The label is the caller's, in both states: the primitive never renames the
+ * control, so the accessible name goes `signin_btn` → `signing_in` because the
+ * page said so. Across that transition a screen reader announces the new name
+ * plus busy, on the button the user is still standing on.
+ */
+function SelfBusyingButton({
+  locale,
+  onActivate,
+}: {
+  locale: Locale;
+  onActivate: ButtonProps['onClick'];
+}) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <Button
+      variant="primary"
+      loading={busy}
+      onClick={(event) => {
+        setBusy(true);
+        onActivate?.(event);
+      }}
+    >
+      {busy ? t(locale, 'signing_in') : t(locale, 'signin_btn')}
+    </Button>
+  );
+}
+
+/**
+ * The C-13 regression guard. Setting the native `disabled` attribute on a
+ * focused element blurs it to `<body>`; `aria-disabled` does not. Asserting
+ * focus *after* the idle → loading transition is what tells the two apart —
+ * the assertion below fails the moment `loading` goes back to painting
+ * `disabled`.
+ */
+export const KeepsFocusWhileBusy: Story = {
+  args: { onClick: fn() },
+  render: (args, ctx) => {
+    const locale = localeFrom(ctx.globals);
+    return (
+      <Frame title={copy.focusLegend[locale]} note={copy.focusNote[locale]}>
+        <SelfBusyingButton locale={locale} onActivate={args.onClick} />
+      </Frame>
+    );
+  },
+  play: async ({ args, canvasElement }) => {
+    const button = within(canvasElement).getByRole('button');
+    button.focus();
+    await expect(button).toHaveFocus();
+
+    // Keyboard activation, the way the affected user reaches it.
+    await userEvent.keyboard('{Enter}');
+    await expect(args.onClick).toHaveBeenCalledTimes(1);
+
+    await waitFor(async () => {
+      await expect(button).toHaveAttribute('aria-busy', 'true');
+    });
+    // The defect: with `disabled`, focus is on <body> by now.
+    await expect(button).toHaveFocus();
+    await expect(canvasElement.ownerDocument.activeElement).toBe(button);
+    await expect(button).not.toBeDisabled();
+
+    // And the lock holds: a second Enter, a Space and a click all go nowhere.
+    await userEvent.keyboard('{Enter}');
+    await userEvent.keyboard(' ');
+    await userEvent.click(button);
+    await expect(args.onClick).toHaveBeenCalledTimes(1);
+    await expect(button).toHaveFocus();
+  },
+};
+
+/**
+ * `aria-disabled` announces a lock; it does not enforce one. Enter and Space
+ * are the browser's own path to a click on a `<button>`, so the primitive has
+ * to refuse them itself — and refuse them *at the key*, before a click exists,
+ * so the caller's own `onKeyDown`/`onKeyUp` never run the action a second way.
+ *
+ * The key spies are the point of this story: the click guard alone would keep
+ * `onClick` quiet while leaving those handlers firing.
+ */
+export const BusyIgnoresKeyboardActivation: Story = {
+  args: { onClick: fn(), onKeyDown: fn(), onKeyUp: fn() },
+  render: (args, ctx) => {
+    const locale = localeFrom(ctx.globals);
+    return (
+      <Frame title={copy.keyboardLegend[locale]}>
+        <Button
+          variant="primary"
+          loading
+          onClick={args.onClick}
+          onKeyDown={args.onKeyDown}
+          onKeyUp={args.onKeyUp}
+        >
+          {t(locale, 'signing_in')}
+        </Button>
+      </Frame>
+    );
+  },
+  play: async ({ args, canvasElement }) => {
+    const button = within(canvasElement).getByRole('button');
+    button.focus();
+    await expect(button).toHaveFocus();
+
+    await userEvent.keyboard('{Enter}');
+    await userEvent.keyboard(' ');
+
+    await expect(args.onClick).not.toHaveBeenCalled();
+    await expect(args.onKeyDown).not.toHaveBeenCalled();
+    await expect(args.onKeyUp).not.toHaveBeenCalled();
+    await expect(button).toHaveFocus();
+  },
+};
+
+/**
+ * The expensive failure the click guard is really for: submission is the
+ * *default action* of a click on `type="submit"`, so a busy submit button that
+ * only skipped `onClick` would still post the form — including via implicit
+ * submission, where the browser synthesises the click from a text field's
+ * Enter. Both paths are exercised here rather than assumed.
+ */
+export const BusySubmitDoesNotSubmit: Story = {
+  args: { onSubmit: fn() },
+  render: (args, ctx) => {
+    const locale = localeFrom(ctx.globals);
+    return (
+      <Frame title={copy.busyFormLegend[locale]}>
+        <form
+          className="flex max-w-dialog flex-col gap-6"
+          onSubmit={(event) => {
+            event.preventDefault();
+            args.onSubmit?.(
+              event as unknown as Parameters<
+                NonNullable<ButtonProps['onSubmit']>
+              >[0],
+            );
+          }}
+        >
+          <Input label={copy.amountLabel[locale]} name="amount" />
+          <Button variant="primary" type="submit" loading fullWidth>
+            {t(locale, 'import_save_btn')}
+          </Button>
+        </form>
+      </Frame>
+    );
+  },
+  play: async ({ args, canvasElement }) => {
+    const canvas = within(canvasElement);
+    const button = canvas.getByRole('button');
+    await expect(button).toHaveAttribute('type', 'submit');
+
+    await userEvent.click(button);
+    await expect(args.onSubmit).not.toHaveBeenCalled();
+
+    // Implicit submission: Enter in the field fires a click on the form's
+    // default button, which is the busy one.
+    const field = canvas.getByRole('textbox');
+    await userEvent.click(field);
+    await userEvent.keyboard('{Enter}');
+    await expect(args.onSubmit).not.toHaveBeenCalled();
   },
 };
 
