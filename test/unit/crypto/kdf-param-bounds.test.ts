@@ -13,6 +13,19 @@
  * error message — the whole point of finding S-4 is that the work must not
  * start.
  *
+ * Since #61 there are **two** places the bound has to hold, and this file
+ * asserts both:
+ *
+ *   · on the main thread, before a worker is spawned at all — hence the
+ *     `createWorker` recorder and its `ports` assertions. Spawning a thread and
+ *     an Argon2 WebAssembly instance to be told the parameters were absurd
+ *     would be a smaller denial of service than S-4, but it would still be one,
+ *     and it is not what "before any expensive work" means;
+ *   · inside the worker, which is a separate entry point that accepts whatever
+ *     the page posts it — asserted in `kdf-worker.test.ts` against
+ *     `handleDeriveRequest` directly, because a check that exists only on the
+ *     caller's side is not a check the worker has.
+ *
  * `vi.mock` is file-scoped and hoisted, which is why this lives in its own file
  * rather than in `kdf.test.ts`, where the real hash-wasm has to run for the
  * reference known-answer vectors.
@@ -23,10 +36,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ARGON2ID_DEFAULT_PARAMS,
   type Argon2idParams,
-  argon2idDigestForVectorTests,
   deriveMasterKey,
   MASTER_KEY_LENGTH_BYTES,
 } from '../../../app/crypto/kdf';
+import { argon2idDigestForVectorTests } from '../../../app/crypto/kdf-worker-body';
+import {
+  type RecordingKdfWorkerFactory,
+  recordingKdfWorkerFactory,
+} from '../../support/kdf-worker-port';
 
 vi.mock('hash-wasm', () => ({
   // A stub that returns a well-formed 32-byte digest instantly. Any call at all
@@ -79,17 +96,28 @@ const BELOW_FLOOR: ReadonlyArray<[string, Argon2idParams]> = [
 const OUT_OF_RANGE = [...OVER_CEILING, ...BELOW_FLOOR];
 
 describe('deriveMasterKey — out-of-range params never reach Argon2id', () => {
+  let workers: RecordingKdfWorkerFactory;
+
   beforeEach(() => {
     argon2idStub.mockClear();
+    workers = recordingKdfWorkerFactory();
   });
 
+  const derive = (params: Argon2idParams) =>
+    deriveMasterKey(PASSWORD, SALT, params, { createWorker: workers });
+
   it.each(OUT_OF_RANGE)(
-    'rejects params %s without calling argon2id',
+    'rejects params %s without calling argon2id, or spawning a worker',
     async (_label, params) => {
-      await expect(
-        deriveMasterKey(PASSWORD, SALT, params),
-      ).rejects.toMatchObject({ code: 'params/invalid' });
+      await expect(derive(params)).rejects.toMatchObject({
+        code: 'params/invalid',
+      });
       expect(argon2idStub).not.toHaveBeenCalled();
+      // The bound is checked on this thread, so nothing is spawned to check it
+      // on. If this ever reads 1, validation has drifted into the worker only
+      // and a hostile `meta` row costs a thread and a WebAssembly instance
+      // before it costs an error.
+      expect(workers.ports).toHaveLength(0);
     },
   );
 
@@ -130,8 +158,12 @@ describe('deriveMasterKey — out-of-range params never reach Argon2id', () => {
    * the stub were mis-wired and the spy could never be called at all.
    */
   it('does call argon2id for in-range params', async () => {
-    await deriveMasterKey(PASSWORD, SALT, ARGON2ID_DEFAULT_PARAMS);
+    await derive(ARGON2ID_DEFAULT_PARAMS);
     expect(argon2idStub).toHaveBeenCalledTimes(1);
+    // And the other half of the control: in-range parameters *do* spawn exactly
+    // one worker, so "no worker was spawned" above means the rejection stopped
+    // it and not that the factory was never wired up.
+    expect(workers.ports).toHaveLength(1);
     expect(argon2idStub).toHaveBeenCalledWith(
       expect.objectContaining({
         memorySize: ARGON2ID_DEFAULT_PARAMS.memorySizeKib,
@@ -142,18 +174,15 @@ describe('deriveMasterKey — out-of-range params never reach Argon2id', () => {
   });
 
   /**
-   * Ordering: parameters are validated before the password is even encoded, so
-   * nothing derived from the secret is materialised for a request that was
-   * never going to run.
+   * Ordering: parameters are validated before the password is even encoded or
+   * posted anywhere, so nothing derived from the secret is materialised — or
+   * copied into a second realm — for a request that was never going to run.
    */
   it('rejects out-of-range params even when every other input is valid', async () => {
     await expect(
-      deriveMasterKey(PASSWORD, SALT, {
-        memorySizeKib: 1_048_576,
-        iterations: 64,
-        parallelism: 1,
-      }),
+      derive({ memorySizeKib: 1_048_576, iterations: 64, parallelism: 1 }),
     ).rejects.toMatchObject({ code: 'params/invalid' });
     expect(argon2idStub).not.toHaveBeenCalled();
+    expect(workers.ports).toHaveLength(0);
   });
 });
