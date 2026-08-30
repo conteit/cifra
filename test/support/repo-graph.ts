@@ -27,7 +27,18 @@ export const REPO_WALKER_OPTIONS: WalkerOptions = {
   alias: { '~/': 'app/' },
 };
 
-/** Walks the module graph of a repo-relative entry point. */
-export function repoImportGraph(entry: string): ImportGraph {
-  return buildImportGraph(entry, REPO_WALKER_OPTIONS);
+/**
+ * Walks the module graph of a repo-relative entry point.
+ *
+ * `overrides` exists for {@link WalkerOptions.followKinds}: the crypto worker
+ * boundary suite (#61) asks what `app/crypto/kdf.ts` can reach *without*
+ * crossing the `new URL(…, import.meta.url)` worker edge, which is a different
+ * question from what it can reach at all. Root and alias stay fixed, so the two
+ * questions are asked of the same repo.
+ */
+export function repoImportGraph(
+  entry: string,
+  overrides: Omit<WalkerOptions, 'root' | 'alias'> = {},
+): ImportGraph {
+  return buildImportGraph(entry, { ...REPO_WALKER_OPTIONS, ...overrides });
 }

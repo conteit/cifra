@@ -10,6 +10,8 @@ import {
   filesUnder,
   moduleSpecifiers,
   packagesMatching,
+  REFERENCE_KINDS,
+  referenceKindsExcept,
   UnresolvedModuleError,
 } from '../../support/import-graph';
 
@@ -281,6 +283,22 @@ write('app/broken-alias.ts', `import '~/nowhere/at/all';\n`);
 // biome-ignore lint/suspicious/noTemplateCurlyInString: fixture source text the walker must refuse, not expand
 write('app/computed.ts', 'await import(`./locales/${locale}`);\n');
 
+// A module that owns a worker: one ordinary import, and one `new URL(…,
+// import.meta.url)` reference to an entry point that pulls in a heavy package.
+// This is the shape `app/crypto/kdf.ts` has since #61, and the shape
+// `followKinds` exists to interrogate.
+write(
+  'app/worker-host.ts',
+  [
+    `import './host-leaf';`,
+    `const worker = new URL('./worker-entry.ts', import.meta.url);`,
+    `export const used = [worker];`,
+  ].join('\n'),
+);
+write('app/host-leaf.ts', `export const leaf = 1;\n`);
+write('app/worker-entry.ts', `import 'hash-wasm';\nimport './worker-leaf';\n`);
+write('app/worker-leaf.ts', `export const wl = 1;\n`);
+
 describe('buildImportGraph', () => {
   const graph = buildImportGraph('app/entry.ts', options);
 
@@ -399,5 +417,81 @@ describe('the forms review finding S-3 demonstrated', () => {
     const OLD =
       /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*)['"]([^'"]+)['"]|\bimport\s+['"]([^'"]+)['"]/g;
     expect([...REGEX_BLIND_SPOTS.matchAll(OLD)]).toEqual([]);
+  });
+});
+
+/* ── followKinds: asking what one side of a worker boundary can reach ────── */
+
+describe('followKinds narrows the walk without blinding it', () => {
+  const MAIN_THREAD = {
+    ...options,
+    followKinds: referenceKindsExcept('module-url'),
+  };
+
+  it('follows the worker URL by default', () => {
+    const graph = buildImportGraph('app/worker-host.ts', options);
+    expect([...graph.files].sort()).toEqual([
+      'app/host-leaf.ts',
+      'app/worker-entry.ts',
+      'app/worker-host.ts',
+      'app/worker-leaf.ts',
+    ]);
+    expect(packagesMatching(graph, 'hash-wasm')).toEqual(['hash-wasm']);
+  });
+
+  it('stops at the worker URL when module-url is excluded', () => {
+    const graph = buildImportGraph('app/worker-host.ts', MAIN_THREAD);
+    expect([...graph.files].sort()).toEqual([
+      'app/host-leaf.ts',
+      'app/worker-host.ts',
+    ]);
+    // The package behind the excluded edge must not be counted either, or a
+    // "reaches no hashing package" assertion would be answered by an edge the
+    // walk never crossed.
+    expect(packagesMatching(graph, 'hash-wasm')).toEqual([]);
+  });
+
+  it('still records the excluded reference, so nothing is hidden', () => {
+    const graph = buildImportGraph('app/worker-host.ts', MAIN_THREAD);
+    expect(graph.references.get('app/worker-host.ts')).toEqual([
+      expect.objectContaining({
+        specifier: './host-leaf',
+        kind: 'static-import',
+      }),
+      expect.objectContaining({
+        specifier: './worker-entry.ts',
+        kind: 'module-url',
+      }),
+    ]);
+  });
+
+  it('still refuses a computed specifier of a kind it is not following', () => {
+    // Excluding a kind must not become a way to smuggle an unreadable
+    // reference past the walker: a hole is a hole whichever edge it sits on.
+    expect(() =>
+      buildImportGraph('app/computed.ts', {
+        ...options,
+        followKinds: referenceKindsExcept('dynamic-import'),
+      }),
+    ).toThrow(ComputedSpecifierError);
+  });
+
+  it('enumerates every reference kind the walker can emit', () => {
+    // `referenceKindsExcept` is written as "everything but X". If a new kind
+    // were added to the union and not to REFERENCE_KINDS, every such walk would
+    // silently stop following it. The Record the array is derived from makes
+    // that a type error; this asserts the value side.
+    expect([...REFERENCE_KINDS].sort()).toEqual([
+      'dynamic-import',
+      'import-equals',
+      'module-url',
+      'require',
+      'static-export',
+      'static-import',
+    ]);
+    expect(referenceKindsExcept('module-url')).not.toContain('module-url');
+    expect(referenceKindsExcept('module-url')).toHaveLength(
+      REFERENCE_KINDS.length - 1,
+    );
   });
 });

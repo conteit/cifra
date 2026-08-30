@@ -54,6 +54,36 @@ export type ReferenceKind =
   | 'require'
   | 'module-url';
 
+/**
+ * Every {@link ReferenceKind}, as a value.
+ *
+ * It is derived from a `Record<ReferenceKind, true>` so that adding a kind to
+ * the union without adding it here is a **type error**, not a silently shorter
+ * list. That matters because {@link WalkerOptions.followKinds} is written as
+ * "everything except X": if a new kind could go missing from this array, such a
+ * walk would quietly stop following it and every negative assertion built on it
+ * would weaken without anyone touching the test.
+ */
+const REFERENCE_KIND_PRESENCE: Record<ReferenceKind, true> = {
+  'static-import': true,
+  'static-export': true,
+  'import-equals': true,
+  'dynamic-import': true,
+  require: true,
+  'module-url': true,
+};
+
+export const REFERENCE_KINDS = Object.keys(
+  REFERENCE_KIND_PRESENCE,
+) as readonly ReferenceKind[];
+
+/** Every reference kind but the ones named. */
+export function referenceKindsExcept(
+  ...excluded: readonly ReferenceKind[]
+): readonly ReferenceKind[] {
+  return REFERENCE_KINDS.filter((kind) => !excluded.includes(kind));
+}
+
 export interface ModuleReference {
   /** The literal specifier text, e.g. `./schema` or `firebase/auth`. */
   readonly specifier: string;
@@ -250,6 +280,25 @@ export interface WalkerOptions {
    * `root`. The repo's `tsconfig.json` declares `~/* -> ./app/*`.
    */
   readonly alias?: Readonly<Record<string, string>>;
+  /**
+   * Which kinds of reference the walk *follows*. Defaults to every kind, which
+   * is what a "what can this module reach at all" question wants.
+   *
+   * Narrowing it asks a different and equally real question: **what can this
+   * module reach without crossing a particular kind of edge?** `module-url` is
+   * the one that matters here — `new URL('./kdf-worker.ts', import.meta.url)`
+   * is a bundler-resolved *worker entry*, not an import, so what sits behind it
+   * runs on another thread and in another realm. Dropping that kind from the
+   * walk is how `test/unit/crypto/kdf-worker-boundary.test.ts` states "the main
+   * thread's graph reaches no Argon2id implementation" (#61, D22).
+   *
+   * References of excluded kinds are still **recorded** in
+   * {@link ImportGraph.references} — they are simply not queued, and their bare
+   * specifiers are not counted as packages. Nothing is hidden; the walk just
+   * stops there. Computed and unresolvable specifiers still throw, of every
+   * kind, so a narrowed walk cannot go blind either.
+   */
+  readonly followKinds?: readonly ReferenceKind[];
 }
 
 export interface ImportGraph {
@@ -339,6 +388,12 @@ export function buildImportGraph(
     references.set(key, extracted.references);
 
     for (const reference of extracted.references) {
+      if (
+        options.followKinds !== undefined &&
+        !options.followKinds.includes(reference.kind)
+      ) {
+        continue;
+      }
       const target = localTarget(reference.specifier, current, options);
       if (target === null) {
         packages.add(reference.specifier);
