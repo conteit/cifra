@@ -45,10 +45,15 @@ export interface Argon2idParams {
  *
  * - `memorySizeKib: 65536` — 64 MiB, mandated by `docs/architecture.md` §Crypto
  *   and comfortably above the OWASP Argon2id minimum (46 MiB at t=1).
- * - `iterations: 3` — chosen against a measured benchmark. `hash-wasm`'s
- *   Argon2id costs ~35 ms per pass at 64 MiB on an Apple M4 under Node 24, so
- *   three passes are ~104 ms there and land in the architecture's ~500 ms band
- *   on the slower mid-range mobile browsers that are the actual target device.
+ * - `iterations: 3` — re-measured and deliberately kept by #29 (D23). Three
+ *   passes at 64 MiB cost **103.8 ms of digest** in a real Chromium 151 worker
+ *   on an Apple M4 (106.3 ms including worker spawn), and **102.7 ms** in Node
+ *   24.14. Applied to {@link ARGON2ID_COST_MODEL} that predicts 519–830 ms on
+ *   the target device, which is the architecture's ~500 ms band. It is also
+ *   exactly RFC 9106 §4's *second recommended option* (t = 3, m = 64 MiB) and
+ *   comfortably above every OWASP Argon2id minimum. **Do not move this number
+ *   without a fresh measurement**: once a vault exists, changing it is a
+ *   migration of every stored wrapped key, not a config edit.
  * - `parallelism: 1` — `hash-wasm` runs Argon2id single-threaded in WebAssembly,
  *   so lanes above 1 cost the same wall-clock time while splitting the memory
  *   into smaller, more cache-friendly slices. One lane keeps the memory-hardness
@@ -66,6 +71,81 @@ export const ARGON2ID_DEFAULT_PARAMS: Argon2idParams = Object.freeze({
   iterations: 3,
   parallelism: 1,
 });
+
+/**
+ * The stated, falsifiable assumption behind {@link ARGON2ID_DEFAULT_PARAMS}
+ * (D23).
+ *
+ * `docs/architecture.md` §Crypto asks for an unlock "tuned to roughly 500 ms on
+ * the target device". Until #29 that sentence had no operable meaning, because
+ * **the target device was never defined and has never been measured**. This
+ * constant is that sentence turned into arithmetic anyone can refute with one
+ * phone and one stopwatch.
+ *
+ * - **`referenceUsPerKibPass: 0.53`** — measured, not estimated. Argon2id's cost
+ *   is linear in `memorySizeKib × iterations`, and hash-wasm 4.12.0 holds
+ *   0.51–0.59 µs per KiB-pass across the whole admissible range on an Apple M4,
+ *   in Node 24.14 and in a real Chromium 151 dedicated worker alike (64 MiB × 3
+ *   = 103.8 ms, 64 MiB × 16 = 536.6 ms, 256 MiB × 4 = 572.1 ms; #29, and D19's
+ *   table for the ceiling). Worker spawn is not part of this figure: it is a
+ *   flat 2.5–3.7 ms once warm, and ~20 ms on a tab's *first* derivation, which
+ *   pays the one-off Argon2 WebAssembly compile.
+ * - **`targetDeviceSlowdown: 5–8`** — the assumption, and the only estimated
+ *   number here. "The target device" is a **mid-range Android phone browser**,
+ *   the device class this PWA is expected to be unlocked on most often. Nobody
+ *   has run Argon2id on one yet. The range is the union of the two independent
+ *   estimates this repo has already committed to in writing — D19 reasoned from
+ *   ~5×, the Sprint 01 review of #29 from ~8× — and it brackets what a
+ *   single-core score ratio (an M4 scores roughly 3–4× a mid-range 2024–2025
+ *   SoC) predicts once memory bandwidth, which a memory-hard KDF is bound by far
+ *   more than by ALU throughput, is taken into account. **This is the claim to
+ *   attack**: measure a real phone with `test/e2e/kdf-worker.spec.ts`, which
+ *   logs µs per KiB-pass for exactly this purpose, and divide (#78).
+ * - **`unlockBudgetMs: 250–1000`** — "roughly 500 ms", read as within a factor
+ *   of two either way. Since D22 the derivation runs on a worker thread, so the
+ *   upper half of that band is a spinner rather than a frozen tab; the band is
+ *   still a band because an unlock nobody waits for is a login people avoid,
+ *   and one that returns instantly is one an attacker can grind. The budget is
+ *   spent on the digest alone; the very first unlock in a tab additionally pays
+ *   the WebAssembly compile above, which the same 5–8× turns into roughly
+ *   100–160 ms — still inside the band, but it is the reason the band's top is
+ *   1000 ms and not 830.
+ *
+ * The model is deliberately **not** consulted at runtime and derivation is never
+ * auto-tuned from a live measurement: parameters that varied by device would
+ * make the same password derive a different key on each of them, so a vault
+ * created on a laptop could not be opened on a phone. It exists so that a
+ * proposed change to the defaults can be argued against a number instead of an
+ * intuition.
+ */
+export const ARGON2ID_COST_MODEL = Object.freeze({
+  referenceUsPerKibPass: 0.53,
+  targetDeviceSlowdown: Object.freeze({ min: 5, max: 8 }),
+  unlockBudgetMs: Object.freeze({ min: 250, max: 1000 }),
+});
+
+/**
+ * What {@link ARGON2ID_COST_MODEL} predicts one unlock costs on the target
+ * device, as a millisecond range.
+ *
+ * Pure arithmetic over the model's constants — no clock is read, so the answer
+ * is the same on every machine and in every run. That is what makes it usable
+ * as an assertion: a parameter set that leaves
+ * {@link ARGON2ID_COST_MODEL.unlockBudgetMs} does so identically in CI and on a
+ * developer's laptop.
+ */
+export function predictedUnlockMs(params: Argon2idParams): {
+  min: number;
+  max: number;
+} {
+  const kibPasses = params.memorySizeKib * params.iterations;
+  const referenceMs =
+    (kibPasses * ARGON2ID_COST_MODEL.referenceUsPerKibPass) / 1000;
+  return {
+    min: referenceMs * ARGON2ID_COST_MODEL.targetDeviceSlowdown.min,
+    max: referenceMs * ARGON2ID_COST_MODEL.targetDeviceSlowdown.max,
+  };
+}
 
 /**
  * Per-parameter bounds. The minima are Argon2's own structural limits; the
