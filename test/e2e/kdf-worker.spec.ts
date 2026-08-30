@@ -47,6 +47,12 @@ test.describe.configure({ mode: 'serial' });
 interface DerivationReport {
   /** Wall time of the whole `deriveMasterKey` call, in ms. */
   readonly elapsedMs: number;
+  /** Time from the call to the worker reporting `deriving`, in ms. */
+  readonly spawnMs: number;
+  /** Time spent inside Argon2id itself, in ms. */
+  readonly digestMs: number;
+  /** `memorySizeKib x iterations` the digest above paid for. */
+  readonly kibPasses: number;
   /** How many times the main thread's heartbeat ran during it. */
   readonly ticks: number;
   /** The worst gap between two heartbeats, in ms. */
@@ -93,13 +99,23 @@ async function deriveInPage(page: Page): Promise<DerivationReport> {
     const states: string[] = [];
     const salt = api.generateSalt();
     const startedAt = performance.now();
+    let derivingAt = startedAt;
     const key = await api.deriveMasterKey(
       'cifra e2e — parola d’ordine lunga e distintiva',
       salt,
       api.ARGON2ID_DEFAULT_PARAMS,
-      { onStateChange: (state) => states.push(state) },
+      {
+        onStateChange: (state) => {
+          states.push(state);
+          // `deriving` is posted from inside the worker once its module graph
+          // and the Argon2 WebAssembly module are up, so it splits the flat
+          // spawn cost from the cost that scales with the parameters (#29).
+          if (state === 'deriving') derivingAt = performance.now();
+        },
+      },
     );
-    const elapsedMs = performance.now() - startedAt;
+    const finishedAt = performance.now();
+    const elapsedMs = finishedAt - startedAt;
     beating = false;
 
     let exportKey: string;
@@ -123,6 +139,11 @@ async function deriveInPage(page: Page): Promise<DerivationReport> {
 
     return {
       elapsedMs,
+      spawnMs: derivingAt - startedAt,
+      digestMs: finishedAt - derivingAt,
+      kibPasses:
+        api.ARGON2ID_DEFAULT_PARAMS.memorySizeKib *
+        api.ARGON2ID_DEFAULT_PARAMS.iterations,
       ticks: gaps.length,
       maxGapMs: gaps.length === 0 ? elapsedMs : Math.max(...gaps),
       states,
@@ -181,6 +202,29 @@ test('derives in a dedicated worker without blocking the main thread', async () 
   console.log(
     `[#61] derivation ${report.elapsedMs.toFixed(0)} ms, ` +
       `${report.ticks} main-thread ticks, worst gap ${report.maxGapMs.toFixed(1)} ms`,
+  );
+  // The number D23's cost model is stated in, printed by the harness rather
+  // than left to a one-off script: point this spec at a mid-range Android phone
+  // or an iPhone and divide by the model's 0.53 µs/KiB-pass reference to get
+  // that device's slowdown factor directly (#78). It is logged and not asserted
+  // on purpose — a CI runner is not a target device, and a threshold here would
+  // be a flake rather than a finding.
+  //
+  // Two things make the printed figure comparable only to a like-for-like run,
+  // both measured on an Apple M4 / Chromium 151:
+  //
+  //   · this is the page's **first** derivation, so `spawn` carries the one-off
+  //     Argon2 WebAssembly compile — 19.6 ms cold against 2.7 ms warm — and the
+  //     digest itself is ~8% slower cold (0.570 vs 0.526 µs/KiB-pass);
+  //   · Playwright runs spec files in parallel by default, and Argon2id is
+  //     memory-bandwidth bound, so a contended run roughly doubles the reading
+  //     (1.083 µs/KiB-pass in a full `npm run test:e2e`). Measure with
+  //     `npx playwright test kdf-worker --workers=1` on an otherwise idle
+  //     machine, or the slowdown factor derived from it is the harness's own.
+  console.log(
+    `[#29] spawn ${report.spawnMs.toFixed(1)} ms, ` +
+      `digest ${report.digestMs.toFixed(1)} ms over ${report.kibPasses} KiB-passes, ` +
+      `${((report.digestMs * 1000) / report.kibPasses).toFixed(3)} µs/KiB-pass`,
   );
 });
 
