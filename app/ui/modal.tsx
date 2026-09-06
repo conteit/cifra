@@ -8,6 +8,11 @@ export interface ModalProps {
    * Called for every route out of the modal: the close button, `Escape`, a
    * backdrop click, and any native `close` we did not initiate. The parent
    * owns `open` — the modal never closes itself behind the state's back.
+   *
+   * `Escape` is the exception nested widgets need: a descendant that owns the
+   * key — an open combobox listbox, a date-picker popover — calls
+   * `preventDefault()` on its own `keydown`, and the modal then leaves the
+   * event alone. Innermost handler wins; `onClose` is not called.
    */
   onClose: () => void;
   /** Rendered as the dialog's heading and wired to `aria-labelledby`. */
@@ -105,6 +110,15 @@ export function Modal({
         // the app impossible to assert in a test. `preventDefault` suppresses
         // the UA's close request so the two paths cannot both run.
         if (event.key !== 'Escape') return;
+        // Descendants get first refusal. This handler sits at the top of the
+        // bubble path, so an open combobox listbox or a date-picker popover
+        // inside the panel has already seen the keydown by the time it
+        // arrives; if it claimed the key with `preventDefault()`, the same
+        // event object carries `defaultPrevented` up here and the modal must
+        // not also act on it. The widget's `preventDefault()` doubles as the
+        // suppression of the UA close request, so the native `cancel` path
+        // stays closed either way — see `onCancel`.
+        if (event.defaultPrevented) return;
         event.preventDefault();
         if (dismissible) onClose();
       }}
