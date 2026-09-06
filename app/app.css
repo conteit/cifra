@@ -36,9 +36,13 @@
 
   /* Pigments. */
   --ramp-green-700: #2d5a27;
-  /* Non-text pigment: bars, chart series and fills only — never a text
-     colour. It clears the 3:1 WCAG 1.4.11 graphic bar on every surface but
-     not the 4.5:1 text bar. See D17. */
+  /* Non-text pigment: bars, chart series, fills and the keyboard focus ring —
+     never a text colour. It clears the 3:1 WCAG 1.4.11 graphic bar on every
+     surface but not the 4.5:1 text bar (D17). It is also the only green in the
+     ramp that clears 3:1 on the *cream* surfaces and on the ink panel at once
+     — 3.65:1 on `surface-track` at its lightest neighbour, 3.46:1 on
+     `surface-inverse` at its darkest — which is why the focus ring moved here
+     from green-700 in issue #65. See D24. */
   --ramp-green-500: #4a7c43;
   --ramp-green-100: #d4e8d1;
   /* Was #c4382a until issue #45 — 4.35:1 on surface-inset, just under the AA
@@ -208,7 +212,16 @@
   --color-action-primary: var(--ramp-ink-900);
   --color-action-primary-hover: var(--ramp-ink-700);
   --color-action-on-primary: var(--ramp-cream-100);
-  --color-focus-ring: var(--ramp-green-700);
+  /* The one keyboard-focus treatment, and a non-text affordance: WCAG 1.4.11
+     puts it at 3:1, not 4.5:1. It is green-500, not green-700, because it has
+     to clear that bar on *every* surface a control can sit on, and the dark
+     panel is one of them — green-700 reaches only 2.12:1 on `surface-inverse`,
+     so the first button inside `Card tone="inverse"` would have shipped an
+     invisible ring. green-500 clears 3:1 on all five surfaces, worst case
+     3.46:1. Enforced per surface by `test/unit/palette-contrast.test.ts`,
+     which also fails if a *new* surface token drops the ring below the bar
+     (#65, D24). */
+  --color-focus-ring: var(--ramp-green-500);
 
   /* Rules. `rule` is structural, `rule-soft` divides list rows. */
   --color-rule: rgb(28 28 26 / 0.12);
