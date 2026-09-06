@@ -3,11 +3,116 @@
 /* Editorial Italiana typefaces, self-hosted via @fontsource (FOUN-08).
    Never a third-party CDN: no fonts.googleapis.com, no fonts.gstatic.com.
    Variable axes for the two families that need a weight range; a single
-   static weight for IBM Plex Mono, which the design system only uses at 400. */
-@import "@fontsource-variable/cormorant-garamond/wght.css";
-@import "@fontsource-variable/cormorant-garamond/wght-italic.css";
-@import "@fontsource-variable/ibm-plex-sans/wght.css";
-@import "@fontsource/ibm-plex-mono/400.css";
+   static weight for IBM Plex Mono, which the design system only uses at 400.
+
+   The @font-face rules are declared here rather than pulled in with
+   `@import "@fontsource.../wght.css"` so the bundle carries only the two
+   subsets an EN/IT app can ever request — latin and latin-ext. The upstream
+   stylesheets also declare cyrillic, cyrillic-ext, greek and vietnamese: 13
+   extra .woff2 files that were emitted, precached on install and never read
+   (issue #63). The variable packages ship no per-subset entrypoint, and the
+   static ones drop `unicode-range`, so importing two of those would make the
+   later face claim the whole range and starve the other — hence the explicit
+   rules below. They are verbatim copies of the upstream latin / latin-ext
+   blocks, minus the legacy .woff fallbacks (every service-worker-capable
+   browser has supported WOFF2 for a decade); `test/unit/fonts.test.ts` fails
+   if they ever drift from the installed @fontsource packages. */
+
+/* cormorant-garamond-latin-ext-wght-normal */
+@font-face {
+  font-family: "Cormorant Garamond Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 300 700;
+  src: url("@fontsource-variable/cormorant-garamond/files/cormorant-garamond-latin-ext-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* cormorant-garamond-latin-wght-normal */
+@font-face {
+  font-family: "Cormorant Garamond Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 300 700;
+  src: url("@fontsource-variable/cormorant-garamond/files/cormorant-garamond-latin-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* cormorant-garamond-latin-ext-wght-italic */
+@font-face {
+  font-family: "Cormorant Garamond Variable";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 300 700;
+  src: url("@fontsource-variable/cormorant-garamond/files/cormorant-garamond-latin-ext-wght-italic.woff2")
+    format("woff2-variations");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* cormorant-garamond-latin-wght-italic */
+@font-face {
+  font-family: "Cormorant Garamond Variable";
+  font-style: italic;
+  font-display: swap;
+  font-weight: 300 700;
+  src: url("@fontsource-variable/cormorant-garamond/files/cormorant-garamond-latin-wght-italic.woff2")
+    format("woff2-variations");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* ibm-plex-sans-latin-ext-wght-normal */
+@font-face {
+  font-family: "IBM Plex Sans Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 700;
+  src: url("@fontsource-variable/ibm-plex-sans/files/ibm-plex-sans-latin-ext-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* ibm-plex-sans-latin-wght-normal */
+@font-face {
+  font-family: "IBM Plex Sans Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 700;
+  src: url("@fontsource-variable/ibm-plex-sans/files/ibm-plex-sans-latin-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* ibm-plex-mono-latin-ext-400-normal */
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-ext-400-normal.woff2")
+    format("woff2");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* ibm-plex-mono-latin-400-normal */
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-400-normal.woff2")
+    format("woff2");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
 
 /* ═══════════════════════════════════════════════════════════════════════
    RAW RAMP — the Editorial Italiana v2 pigments.
