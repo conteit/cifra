@@ -193,7 +193,7 @@ const actions: Swatch[] = [
   },
   {
     token: '--color-focus-ring',
-    ramp: '--ramp-green-700',
+    ramp: '--ramp-green-500',
     use: { en: 'Keyboard focus ring', it: 'Anello di focus da tastiera' },
   },
   {

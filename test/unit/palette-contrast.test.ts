@@ -42,6 +42,17 @@ import { describe, expect, it } from 'vitest';
  * families — a tautology — rather than that it covered the theme. Any token in
  * a family nobody had thought of was invisible to both. It now enumerates
  * every `--color-*` declaration in the sheet and demands each be classified.
+ *
+ * ## What issue #65 added
+ *
+ * Bringing the ring into the matrix left it permitted on four surfaces and
+ * silent about the fifth: it reached 2.12:1 on `surface-inverse`, and the row
+ * said so in a comment instead of failing. A permitted set is a list someone
+ * maintains, so it lags the theme by however long nobody notices. The ring is
+ * now `--ramp-green-500`, the one green that clears 3:1 on the cream surfaces
+ * and on the ink panel alike (D24), and `keeps the focus ring above 3:1 on
+ * every surface in the sheet` asserts that against every `--color-surface-*`
+ * the sheet declares — including surfaces added after it was written.
  */
 
 const cssPath = fileURLToPath(new URL('../../app/app.css', import.meta.url));
@@ -194,12 +205,12 @@ const PERMITTED: Pair[] = [
     fg: '--color-focus-ring',
     // C-11. The ring is drawn with `outline-offset-2`, so the 2px gap shows
     // the surface the control sits on: the ring's neighbouring colour is that
-    // surface, not the control's own fill. Every focusable control in the app
-    // today sits on one of these four (`surface-track` is the secondary
-    // button's hover fill). `surface-inverse` is deliberately absent — no
-    // focusable control is placed on the dark panel yet, and the ring does not
-    // clear 3:1 there (2.12:1); issue #65 tracks that.
-    on: [...TEXT_SURFACES, '--color-surface-track'],
+    // surface, not the control's own fill. Every surface in the system is
+    // listed, `surface-inverse` included (#65): the ring is the one affordance
+    // a keyboard user has, so "no control sits there yet" is not a reason to
+    // leave a surface out — it is how an invisible ring ships. `surface-track`
+    // is the secondary button's hover fill.
+    on: [...TEXT_SURFACES, '--color-surface-track', '--color-surface-inverse'],
     // WCAG 1.4.11 non-text contrast: a focus indicator is a graphical object
     // that identifies a UI component's state, so the bar is 3:1, not the 4.5:1
     // that applies to body text.
@@ -349,6 +360,32 @@ describe('palette contrast (D16)', () => {
       covered.has(name),
     );
     expect(both).toEqual([]);
+  });
+
+  it('keeps the focus ring above 3:1 on every surface in the sheet', () => {
+    // #65. The pair matrix says which surfaces the ring is *permitted* on, and
+    // a permitted set is a list someone maintains: `surface-inverse` was
+    // missing from it for exactly as long as no control sat on the dark panel,
+    // which is how the ring came to be 2.12:1 there. This asserts the stronger
+    // property the ring actually needs — it is the one affordance a keyboard
+    // user has, so it clears the 3:1 non-text bar on *every* surface the theme
+    // declares, including one added after this line was written. A new surface
+    // that darkens or lightens past the ring fails here rather than in a
+    // keyboard user's hands.
+    const ring = resolve('--color-focus-ring');
+    const surfaces = [...tokens.keys()]
+      .filter((name) => name.startsWith('--color-surface-'))
+      .sort();
+    expect(surfaces.length).toBeGreaterThan(0);
+
+    for (const surface of surfaces) {
+      const background = resolve(surface);
+      const ratio = contrast(ring, background);
+      expect(
+        Number(ratio.toFixed(2)),
+        `--color-focus-ring ${ring} on ${surface} ${background} is ${ratio.toFixed(2)}:1, below ${NON_TEXT}:1`,
+      ).toBeGreaterThanOrEqual(NON_TEXT);
+    }
   });
 
   it('resolves the two pigments issue #45 repainted', () => {
