@@ -52,6 +52,8 @@ describe('the walker sees the layers it claims to check', () => {
       'app/crypto/kdf.ts',
       'app/crypto/key-wrap.ts',
       'app/crypto/record-cipher.ts',
+      'app/crypto/recovery-phrase.ts',
+      'app/crypto/vault.ts',
     ]);
     expect(DB_MODULES.length).toBeGreaterThanOrEqual(5);
   });
