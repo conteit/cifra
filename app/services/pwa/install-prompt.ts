@@ -16,7 +16,7 @@
  * with no affordance at all, on the one platform where the install path is
  * least discoverable. Hence {@link InstallAffordance} has three values, and
  * iOS gets `guidance`: the same strip of paper, carrying the two-step
- * instruction instead of a button. See D24 in `docs/architecture.md`.
+ * instruction instead of a button. See D25 in `docs/architecture.md`.
  *
  * ## No React, no globals
  *

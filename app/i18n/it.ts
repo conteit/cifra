@@ -63,7 +63,7 @@ export const it: Strings = {
   shell_more: 'Altro',
   shell_soon: 'Presto',
 
-  // Install prompt — l'affordance di installazione PWA (FOUN-06, D24).
+  // Install prompt — l'affordance di installazione PWA (FOUN-06, D25).
   // `install_ios_body` è la variante iOS/iPadOS: WebKit non emette mai
   // `beforeinstallprompt`, quindi non c'è nulla da premere e il testo nomina
   // il comando del browser.

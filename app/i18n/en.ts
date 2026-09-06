@@ -52,7 +52,7 @@ export const en = {
   shell_more: 'More',
   shell_soon: 'Soon',
 
-  // Install prompt — the app's own PWA install affordance (FOUN-06, D24).
+  // Install prompt — the app's own PWA install affordance (FOUN-06, D25).
   // `install_ios_body` is the iOS/iPadOS variant: WebKit never fires
   // `beforeinstallprompt`, so there is nothing to press and the copy names the
   // browser's own command instead.
