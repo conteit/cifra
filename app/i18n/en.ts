@@ -52,6 +52,18 @@ export const en = {
   shell_more: 'More',
   shell_soon: 'Soon',
 
+  // Install prompt — the app's own PWA install affordance (FOUN-06, D24).
+  // `install_ios_body` is the iOS/iPadOS variant: WebKit never fires
+  // `beforeinstallprompt`, so there is nothing to press and the copy names the
+  // browser's own command instead.
+  install_title: 'Install Cifra',
+  install_body:
+    'Add Cifra to your home screen. It opens like an app and keeps working offline.',
+  install_ios_body:
+    'Add Cifra to your home screen: open the Share menu, then choose "Add to Home Screen".',
+  install_action: 'Install',
+  install_dismiss: 'Not now',
+
   // Sync states
   sync_synced: 'Synced',
   sync_dirty: 'Saving...',
