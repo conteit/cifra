@@ -178,8 +178,10 @@
      them and every one of them clears WCAG AA there. `track` is a *graphic*
      surface — progress tracks and the secondary button's hover fill — and
      carries only `text-primary` / `text-secondary`. `inverse` carries
-     `text-inverse` and the accent washes. The permitted pairs are enumerated
-     and enforced by `test/unit/palette-contrast.test.ts` (D16). */
+     `text-inverse` and the accent washes. The focus ring sits on all five —
+     it is the one affordance a keyboard user has, so no surface is exempt
+     (D24). The permitted pairs are enumerated and enforced by
+     `test/unit/palette-contrast.test.ts` (D16). */
   --color-surface-page: var(--ramp-cream-100);
   --color-surface-card: var(--ramp-cream-50);
   --color-surface-inset: var(--ramp-cream-200);
