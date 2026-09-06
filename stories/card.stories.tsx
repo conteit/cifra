@@ -1,9 +1,10 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect, within } from 'storybook/test';
+import { expect, waitFor, within } from 'storybook/test';
 
 import { Button } from '../app/ui/button';
 import { Card } from '../app/ui/card';
 import { type Bilingual, type Locale, localeFrom, t } from './locale';
+import { resolveColorToken } from './token-probe';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Card — the paper every panel is printed on.
@@ -31,6 +32,14 @@ const copy = {
   spend: { en: 'Spend', it: 'Uscite' },
   defaultTone: { en: 'default', it: 'default' },
   inverseTone: { en: 'inverse', it: 'inverse' },
+  focusInverse: {
+    en: 'Keyboard focus on the inverse tone',
+    it: 'Focus da tastiera sul tono inverse',
+  },
+  focusInverseNote: {
+    en: 'One ring on every surface. The focus treatment is a single token, and it clears the 3:1 non-text bar on the ink panel as well as on paper — a control inside an inverse card is as findable by keyboard as one on the page (#65).',
+    it: 'Un solo anello su ogni superficie. Il trattamento del focus è un unico token e supera la soglia 3:1 per elementi non testuali sul pannello inchiostro come sulla carta: un controllo dentro una scheda inverse è raggiungibile da tastiera quanto uno sulla pagina (#65).',
+  },
 } satisfies Record<string, Bilingual>;
 
 const rows = [
@@ -149,6 +158,70 @@ export const ToneItalian: Story = {
 export const ToneMobile: Story = {
   globals: { viewport: { value: 'mobile' } },
   render: (_args, ctx) => <Tones locale={localeFrom(ctx.globals)} />,
+};
+
+/* ── Keyboard focus on the dark panel ───────────────────────────────────── */
+
+/**
+ * The inverse tone is the one surface in the system that is not paper, and a
+ * focus ring that works on cream is not automatically a focus ring that works
+ * on ink — `--ramp-green-700` reached 2.12:1 there, which is an invisible
+ * indicator for the user who has no other one. Issue #65 moved the ring to the
+ * pigment that clears 3:1 on both, and this story is where that stays true:
+ * the play function focuses a real control inside a real inverse card and
+ * asserts the painted outline is the focus-ring token, so repainting the ring
+ * back to something that only works on paper fails here as well as in
+ * `test/unit/palette-contrast.test.ts`.
+ */
+export const FocusOnInverse: Story = {
+  render: (_args, ctx) => {
+    const locale = localeFrom(ctx.globals);
+    return (
+      <Frame
+        title={copy.focusInverse[locale]}
+        note={copy.focusInverseNote[locale]}
+      >
+        <Card
+          as="section"
+          tone="inverse"
+          elevation="float"
+          className="max-w-page"
+        >
+          <p className="font-mono text-label uppercase text-text-inverse">
+            {copy.balanceLabel[locale]}
+          </p>
+          <p className="mt-3 font-display text-stat text-text-inverse">
+            € 1.284,50
+          </p>
+          <div className="mt-8">
+            <Button variant="secondary">{t(locale, 'continue_btn')}</Button>
+          </div>
+        </Card>
+      </Frame>
+    );
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const action = canvas.getByRole('button');
+    action.focus();
+    await expect(action).toHaveFocus();
+    await expect(action.matches(':focus-visible')).toBe(true);
+
+    // Compare against the resolved token, not merely "not transparent":
+    // Chromium draws its own ring when ours is missing, so the weaker
+    // assertion would pass with the treatment deleted. `waitFor`, because
+    // `transition-colors` animates outline-color — read synchronously after
+    // focus() and the value is still the pre-transition currentColor.
+    const expectedRing = resolveColorToken(
+      canvasElement.ownerDocument,
+      '--color-focus-ring',
+    );
+    await waitFor(async () => {
+      const styles = getComputedStyle(action);
+      await expect(styles.outlineStyle).not.toBe('none');
+      await expect(styles.outlineColor).toBe(expectedRing);
+    });
+  },
 };
 
 /* ── Elevation ──────────────────────────────────────────────────────────── */
