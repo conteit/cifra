@@ -267,9 +267,10 @@ export default defineConfig(({ mode }) => {
           navigateFallback: NAVIGATE_FALLBACK,
           // Workbox's default is `**/*.{js,wasm,css,html}`, which leaves a cold
           // offline load without the favicon and without the Editorial Italiana
-          // typefaces. `.woff` is deliberately excluded: every browser that
-          // implements service workers has supported WOFF2 for a decade, so the
-          // legacy fallbacks would be precached bytes nothing ever reads.
+          // typefaces. `.woff` is absent because nothing emits one any more:
+          // `app/app.css` declares the @font-face rules itself and drops the
+          // legacy fallbacks, since every browser that implements service
+          // workers has supported WOFF2 for a decade (issue #63).
           // `manifest.webmanifest` and the icons under `icons/` are not listed
           // either — vite-plugin-pwa injects those as additional manifest
           // entries from `public/`, and globbing them here would duplicate them.
