@@ -193,7 +193,7 @@ describe('install prompt controller', () => {
     expect(createInstallPromptController(ios).getState()).toBe('hidden');
   });
 
-  describe('iOS guidance (D24)', () => {
+  describe('iOS guidance (D25)', () => {
     it('offers guidance on iPhone, where beforeinstallprompt never fires', () => {
       const ios = fakeEnv({ userAgent: SAFARI_IPHONE });
       expect(createInstallPromptController(ios).getState()).toBe('guidance');

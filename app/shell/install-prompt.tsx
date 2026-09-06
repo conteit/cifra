@@ -13,7 +13,7 @@ import { Card } from '../ui/card';
    there is anything to offer belongs to `app/services/pwa/install-prompt.ts`;
    wiring the two together is the layout route's job.
 
-   Two variants, one component (see D24 in `docs/architecture.md`):
+   Two variants, one component (see D25 in `docs/architecture.md`):
 
      · `available` — Chromium captured a `beforeinstallprompt`, so there is a
        real button that opens the browser's install dialog.

@@ -15,7 +15,7 @@ import { type Bilingual, type Locale, localeFrom, t } from './locale';
      · `guidance`  — iOS/iPadOS, where that event is never fired by any
        browser. The strip carries the Share → Add to Home Screen instruction
        instead of a button, so the platform with the least discoverable install
-       path is not the one platform with no affordance at all (D24).
+       path is not the one platform with no affordance at all (D25).
      · `hidden`    — already installed, dismissed, or a browser with neither an
        event nor an install path worth naming. Renders nothing: no wrapper, no
        spacing, no landmark.
@@ -143,7 +143,7 @@ export const AvailableMobile: Story = {
   globals: { viewport: { value: 'mobile' } },
 };
 
-/* ── guidance: the iOS path (D24) ───────────────────────────────────────── */
+/* ── guidance: the iOS path (D25) ───────────────────────────────────────── */
 
 export const IosGuidance: Story = {
   render: (args, ctx) => (
