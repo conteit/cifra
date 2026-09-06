@@ -9,7 +9,6 @@ import {
   initializeAuth,
   onAuthStateChanged,
   signInWithPopup,
-  type User,
 } from 'firebase/auth';
 
 import {
@@ -17,8 +16,9 @@ import {
   AUTH_EMULATOR_CONFIG,
   AUTH_EMULATOR_URL,
 } from './auth-emulator';
+import { toAuthUser } from './auth-user';
 import { type FirebaseWebConfig, readFirebaseConfig } from './firebase-config';
-import type { AuthPort, AuthUser } from './types';
+import type { AuthPort } from './types';
 
 /**
  * The **only** module in the app that imports the Firebase SDK. Everything
@@ -137,20 +137,6 @@ function getAuthClient(): Auth {
     AUTH_DEPENDENCIES,
   );
   return cachedAuth;
-}
-
-/**
- * Narrows a Firebase `User` down to the display-level identity the app is
- * allowed to hold. Tokens, credentials, provider payloads and the refresh
- * handle are dropped here and never reach the store.
- */
-function toAuthUser(user: User): AuthUser {
-  return {
-    uid: user.uid,
-    email: user.email,
-    displayName: user.displayName,
-    photoURL: user.photoURL,
-  };
 }
 
 /** Builds the live `AuthPort`. Firebase is initialised lazily on first use. */

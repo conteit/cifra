@@ -1,0 +1,163 @@
+import { type FormEvent, useState } from 'react';
+
+import type { Strings } from '../i18n';
+import type { VaultSecret } from '../services/vault/types';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { ScreenError, ScreenFrame } from './screen-frame';
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Unlock — the second half of "create vault → lock → unlock".
+
+   ## Scope: this is #9's half, not #10's
+
+   #10 owns the lock *screen*: its presentation as a `dismissible={false}`
+   modal over the app, the 30-minute idle auto-lock, and the wipe on tab close
+   (FOUN-10). What ships here is the smallest thing that makes a created vault
+   re-openable — a full-page unlock with both secrets — because without it #9
+   would ship a vault that can be made and never re-entered, and the journey the
+   architecture's §Testing names could not be written. #10 inherits this
+   component and re-presents it; the store, the service and both call paths
+   below are already in place for it.
+
+   ## One call site for two secrets
+
+   The two modes differ in what the user types and in nothing else: both end at
+   `onUnlock` with a `VaultSecret`, whose discriminated union is what makes it
+   impossible to route a recovery phrase into the password path (D26). A
+   toggle rather than an ARIA tablist — there are two modes, only one is ever
+   relevant to a given user at a given moment, and the toggle needs no roving
+   tabindex to be operable.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export type VaultUnlockStrings = Pick<
+  Strings,
+  | 'tagline_line1'
+  | 'tagline_line2'
+  | 'unlock_title'
+  | 'unlock_sub'
+  | 'unlock_password_label'
+  | 'unlock_btn'
+  | 'unlocking'
+  | 'unlock_use_recovery'
+  | 'unlock_use_password'
+  | 'unlock_recovery_title'
+  | 'unlock_recovery_sub'
+  | 'recovery_phrase_label'
+  | 'vault_busy_starting'
+  | 'vault_busy_deriving'
+  | 'identity_lock'
+  | 'signout_btn'
+>;
+
+export interface VaultUnlockScreenProps {
+  strings: VaultUnlockStrings;
+  /** An unlock is in flight. */
+  busy: boolean;
+  /** D22's three-state derivation signal. Always `null` on the phrase path. */
+  derivation: 'starting' | 'deriving' | null;
+  /** Already localised. `secret/rejected`, `phrase/malformed`, … */
+  errorMessage?: string | null;
+  onUnlock: (secret: VaultSecret) => void;
+  /** The way out for someone who has lost both secrets. */
+  onSignOut: () => void;
+}
+
+export function VaultUnlockScreen({
+  strings,
+  busy,
+  derivation,
+  errorMessage = null,
+  onUnlock,
+  onSignOut,
+}: VaultUnlockScreenProps) {
+  const [mode, setMode] = useState<'password' | 'recovery-phrase'>('password');
+  const [password, setPassword] = useState('');
+  const [phrase, setPhrase] = useState('');
+
+  const recovery = mode === 'recovery-phrase';
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (busy) return;
+    onUnlock(
+      recovery
+        ? { kind: 'recovery-phrase', phrase }
+        : { kind: 'password', password },
+    );
+  }
+
+  const busyLabel =
+    derivation === 'deriving'
+      ? strings.vault_busy_deriving
+      : strings.vault_busy_starting;
+
+  return (
+    <ScreenFrame
+      screen={recovery ? 'vault-unlock-recovery' : 'vault-unlock'}
+      taglineLine1={strings.tagline_line1}
+      taglineLine2={strings.tagline_line2}
+      title={recovery ? strings.unlock_recovery_title : strings.unlock_title}
+      subtitle={recovery ? strings.unlock_recovery_sub : strings.unlock_sub}
+      footer={
+        <div className="flex justify-center">
+          <Button variant="quiet" onClick={onSignOut} data-testid="sign-out">
+            {strings.signout_btn}
+          </Button>
+        </div>
+      }
+    >
+      <form className="flex flex-col gap-7" onSubmit={submit}>
+        {recovery ? (
+          <Input
+            key="recovery"
+            label={strings.recovery_phrase_label}
+            // Never `autoComplete`: a recovery phrase saved into a browser's
+            // form store is an unasked-for copy of the vault key.
+            autoComplete="off"
+            autoCapitalize="characters"
+            spellCheck={false}
+            value={phrase}
+            onChange={(event) => setPhrase(event.target.value)}
+            data-testid="recovery-input"
+          />
+        ) : (
+          <Input
+            key="password"
+            label={strings.unlock_password_label}
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            data-testid="unlock-password"
+          />
+        )}
+
+        {errorMessage ? <ScreenError>{errorMessage}</ScreenError> : null}
+
+        {busy ? (
+          <p
+            role="status"
+            data-derivation={derivation ?? 'none'}
+            className="font-mono text-label uppercase text-text-muted"
+          >
+            {busyLabel}
+          </p>
+        ) : null}
+
+        <Button fullWidth type="submit" loading={busy} data-testid="unlock">
+          {busy ? strings.unlocking : strings.unlock_btn}
+        </Button>
+
+        <Button
+          variant="secondary"
+          fullWidth
+          onClick={() => setMode(recovery ? 'password' : 'recovery-phrase')}
+          data-testid="unlock-toggle-mode"
+        >
+          {recovery ? strings.unlock_use_password : strings.unlock_use_recovery}
+        </Button>
+      </form>
+    </ScreenFrame>
+  );
+}

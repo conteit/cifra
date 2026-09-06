@@ -61,13 +61,25 @@ describe('nav items agree with the route config', () => {
     }
   });
 
-  it('mounts every route inside the app-shell layout', () => {
-    // A page that renders outside the shell is a deliberate act (#9's sign-in
-    // screen will be one). Today there is exactly one layout and everything
-    // lives under it, so a stray top-level page would be an accident.
+  it('mounts every route inside the gate, and the gate inside nothing', () => {
+    // #9 put a second pathless layout above the shell: `routes/gate.tsx`
+    // renders the sign-in, setup and unlock screens *instead of* everything
+    // below it, and its `<Outlet />` only once the vault is open. Those three
+    // screens are the deliberate act of rendering outside the shell this test
+    // used to anticipate — and because the gate is a wrapper rather than a
+    // `/sign-in` sibling reached by redirect, they render at whatever URL the
+    // user asked for instead of costing them their deep link.
+    //
+    // A stray *third* top-level entry would still be an accident: it would be a
+    // page reachable with no identity and no vault.
     const top = routeConfig as Array<Entry & { file?: string }>;
     expect(top).toHaveLength(1);
-    expect(top[0].file).toBe('routes/app-layout.tsx');
+    expect(top[0].file).toBe('routes/gate.tsx');
     expect(top[0].path).toBeUndefined();
+
+    const nested = (top[0].children ?? []) as Array<Entry & { file?: string }>;
+    expect(nested).toHaveLength(1);
+    expect(nested[0].file).toBe('routes/app-layout.tsx');
+    expect(nested[0].path).toBeUndefined();
   });
 });

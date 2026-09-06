@@ -8,26 +8,121 @@ export const en = {
   signin_sub: 'Sign in to unlock your private personal finance.',
   signin_feat1_title: 'End-to-end encryption',
   signin_feat1_body: 'Your data is encrypted on device -- no one can read it.',
-  signin_feat2_title: 'AI with your Google account',
-  signin_feat2_body: 'Receipt scanning and auto-categorisation, on your quota.',
+  signin_feat2_title: 'Only you hold the key',
+  signin_feat2_body:
+    'Your master password opens the vault. Cifra cannot reset it for you.',
   signin_feat3_title: 'Cross-device sync',
   signin_feat3_body:
     'Encrypted blobs in transit -- the server only ever sees ciphertext.',
   signin_btn: 'Continue with Google',
   signing_in: 'Signing in...',
-  signin_note: 'Requires Gemini API permission for AI features',
+  signin_note: 'Google identifies you. It never unlocks your data.',
+
+  // Sign-in — auth unavailable. No VITE_FIREBASE_* and no emulator is a real
+  // state a user can land in, not just a developer's mistake.
+  signin_unavailable_title: 'Sign-in is unavailable',
+  signin_unavailable_body:
+    'This build has no identity provider configured, so there is nothing to sign in to. Nothing on this device has been touched.',
+  signin_unavailable_hint: 'Reload the page once the app is configured.',
+
+  // Sign-in failures, one line per AuthErrorCode. The session store surfaces a
+  // code; the copy lives here, never in the store.
+  auth_error_popup_closed: 'The Google window closed before sign-in finished.',
+  auth_error_popup_blocked:
+    'Your browser blocked the Google window. Allow popups for this site, then try again.',
+  auth_error_cancelled: 'That sign-in was cancelled.',
+  auth_error_network:
+    'Could not reach Google. Check your connection and try again.',
+  auth_error_account_exists:
+    'That email is already linked to a different sign-in method.',
+  auth_error_unauthorized_domain:
+    'This address is not on the sign-in allowlist for this app.',
+  auth_error_operation_not_allowed:
+    'Google sign-in is not enabled for this app.',
+  auth_error_user_disabled: 'That account has been disabled.',
+  auth_error_too_many_requests:
+    'Too many attempts. Wait a moment and try again.',
+  auth_error_configuration: 'Sign-in is not configured in this build.',
+  auth_error_storage_unsupported:
+    'Your browser is blocking the storage sign-in needs. Leave private browsing or allow site data.',
+  auth_error_unknown: 'Something went wrong signing in. Try again.',
 
   // Setup wizard — Vault creation
   setup_vault_title: 'Creating vault',
   vault_step1: 'AES-256 key generated',
   vault_step1_sub: 'On-device -- never transmitted in plaintext',
-  vault_step2: 'Key bound to account',
-  vault_step2_sub: 'Google UID + device secret (PBKDF2, 100k iterations)',
+  vault_step2: 'Master key derived from your password',
+  vault_step2_sub:
+    'Argon2id on this device -- the password is never sent anywhere',
   vault_step3: 'Encrypted namespace initialised',
   vault_step3_sub: 'Isolated storage for your account',
 
+  // Setup wizard — choosing the master password
+  setup_password_title: 'Choose your master password',
+  setup_password_sub:
+    'It encrypts everything on this device. Cifra never sees it and cannot reset it.',
+  setup_password_label: 'Master password',
+  setup_password_hint:
+    'At least 12 characters. A phrase you can remember beats a short jumble.',
+  setup_password_confirm_label: 'Repeat master password',
+  setup_password_too_short: 'Use at least 12 characters.',
+  setup_password_mismatch: 'The two passwords do not match.',
+  setup_password_warning:
+    'If you forget it, only your recovery phrase can open this vault.',
+
+  // Setup wizard — while the key is being derived. Three honest states, no
+  // percentage: hash-wasm exposes no progress hook (D22).
+  setup_creating_sub:
+    'Deriving your key on this device. On a phone this takes a moment.',
+  vault_busy_starting: 'Preparing...',
+  vault_busy_deriving: 'Deriving your key...',
+
+  // Setup wizard — the recovery phrase, shown exactly once (D26)
+  setup_recovery_title: 'Write down your recovery phrase',
+  setup_recovery_sub:
+    'These 32 characters are the only other way into your vault. They are shown once and can never be shown again.',
+  setup_recovery_warning:
+    'Lose both your master password and this phrase and the data is gone for good. Nobody can recover it -- not Cifra, not Google.',
+  setup_recovery_ack: 'I have written the phrase down somewhere safe.',
+  recovery_phrase_label: 'Recovery phrase',
+
+  // Setup wizard — typing the phrase back
+  setup_confirm_title: 'Type the phrase back',
+  setup_confirm_sub:
+    'This checks that the copy you wrote down is the one that works. Spaces and capitals do not matter.',
+  setup_confirm_mismatch:
+    'That does not match the phrase above. Check what you wrote down.',
+
+  // Setup wizard — done
+  setup_done_title: 'Your vault is ready',
+  setup_done_body:
+    'Everything you add from here is encrypted on this device before it is stored.',
+
+  // Unlock screen
+  unlock_title: 'Unlock your vault',
+  unlock_sub: 'Your master password decrypts this device.',
+  unlock_password_label: 'Master password',
+  unlock_btn: 'Unlock',
+  unlocking: 'Unlocking...',
+  unlock_use_recovery: 'Use your recovery phrase',
+  unlock_use_password: 'Use your master password',
+  unlock_recovery_title: 'Unlock with your recovery phrase',
+  unlock_recovery_sub: 'The 32 characters you wrote down when you set up.',
+  unlock_error_vault_exists:
+    'This device already holds a vault. Unlock it below.',
+  unlock_error_secret_rejected: 'That does not open this vault.',
+  unlock_error_phrase_malformed:
+    'That is not a recovery phrase. It is 32 characters, in 8 groups of 4.',
+  unlock_error_record_invalid:
+    'This vault record cannot be read. Restore from a backup.',
+  unlock_error_environment:
+    'Your browser could not run the unlock. Reload the page and try again.',
+
   // Buttons
   continue_btn: 'Continue',
+  back_btn: 'Back',
+  identity_lock: 'Lock',
+  signout_btn: 'Sign out',
   create_vault_btn: 'Create my vault',
   creating_btn: 'Creating...',
   continue_overview: 'Continue to overview',

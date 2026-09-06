@@ -19,27 +19,120 @@ export const it: Strings = {
   signin_feat1_title: 'Crittografia end-to-end',
   signin_feat1_body:
     'I tuoi dati sono cifrati sul dispositivo -- nessuno puo leggerli.',
-  signin_feat2_title: 'AI con il tuo account Google',
+  signin_feat2_title: 'La chiave e solo tua',
   signin_feat2_body:
-    'Scansione scontrini e categorizzazione automatica, sulla tua quota.',
+    'La tua password principale apre il vault. Cifra non puo reimpostarla.',
   signin_feat3_title: 'Sync tra dispositivi',
   signin_feat3_body:
     'Blob cifrati in transito -- il server vede solo testo incomprensibile.',
   signin_btn: 'Continua con Google',
   signing_in: 'Accesso in corso...',
-  signin_note: 'Richiede il permesso Gemini API per le funzioni AI',
+  signin_note: 'Google ti identifica. Non apre mai i tuoi dati.',
+
+  // Accesso — autenticazione non disponibile
+  signin_unavailable_title: 'Accesso non disponibile',
+  signin_unavailable_body:
+    "Questa build non ha un provider di identita configurato, quindi non c'e nulla a cui accedere. Nulla su questo dispositivo e stato toccato.",
+  signin_unavailable_hint: "Ricarica la pagina quando l'app sara configurata.",
+
+  // Errori di accesso, uno per AuthErrorCode
+  auth_error_popup_closed:
+    "La finestra di Google si e chiusa prima della fine dell'accesso.",
+  auth_error_popup_blocked:
+    'Il browser ha bloccato la finestra di Google. Consenti i popup per questo sito e riprova.',
+  auth_error_cancelled: 'Accesso annullato.',
+  auth_error_network:
+    'Impossibile raggiungere Google. Controlla la connessione e riprova.',
+  auth_error_account_exists:
+    'Questa email e gia collegata a un altro metodo di accesso.',
+  auth_error_unauthorized_domain:
+    "Questo indirizzo non e tra quelli autorizzati all'accesso.",
+  auth_error_operation_not_allowed:
+    "L'accesso con Google non e abilitato per questa app.",
+  auth_error_user_disabled: 'Questo account e stato disattivato.',
+  auth_error_too_many_requests:
+    'Troppi tentativi. Aspetta un momento e riprova.',
+  auth_error_configuration: "L'accesso non e configurato in questa build.",
+  auth_error_storage_unsupported:
+    "Il browser sta bloccando l'archiviazione necessaria all'accesso. Esci dalla navigazione privata o consenti i dati del sito.",
+  auth_error_unknown: "Qualcosa e andato storto durante l'accesso. Riprova.",
 
   // Setup wizard — Vault creation
   setup_vault_title: 'Creazione vault',
   vault_step1: 'Chiave AES-256 generata',
   vault_step1_sub: 'Sul dispositivo -- non trasmessa mai in chiaro',
-  vault_step2: "Chiave vincolata all'account",
-  vault_step2_sub: 'UID Google + secret dispositivo (PBKDF2, 100k iterazioni)',
+  vault_step2: 'Chiave principale derivata dalla tua password',
+  vault_step2_sub:
+    'Argon2id su questo dispositivo -- la password non viene mai inviata',
   vault_step3: 'Namespace cifrato inizializzato',
   vault_step3_sub: 'Storage isolato per il tuo account',
 
+  // Configurazione — scelta della password principale
+  setup_password_title: 'Scegli la tua password principale',
+  setup_password_sub:
+    'Cifra tutto su questo dispositivo. Cifra non la vede mai e non puo reimpostarla.',
+  setup_password_label: 'Password principale',
+  setup_password_hint:
+    'Almeno 12 caratteri. Una frase che ricordi vale piu di un miscuglio corto.',
+  setup_password_confirm_label: 'Ripeti la password principale',
+  setup_password_too_short: 'Usa almeno 12 caratteri.',
+  setup_password_mismatch: 'Le due password non coincidono.',
+  setup_password_warning:
+    'Se la dimentichi, solo la frase di recupero potra aprire questo vault.',
+
+  // Configurazione — derivazione della chiave (tre stati, nessuna percentuale)
+  setup_creating_sub:
+    'Derivazione della chiave su questo dispositivo. Su un telefono richiede un momento.',
+  vault_busy_starting: 'Preparazione...',
+  vault_busy_deriving: 'Derivazione della chiave...',
+
+  // Configurazione — la frase di recupero, mostrata una sola volta (D26)
+  setup_recovery_title: 'Trascrivi la tua frase di recupero',
+  setup_recovery_sub:
+    "Questi 32 caratteri sono l'unico altro modo per entrare nel vault. Vengono mostrati una sola volta e non potranno piu essere rivisti.",
+  setup_recovery_warning:
+    'Se perdi sia la password principale sia questa frase, i dati sono persi per sempre. Nessuno puo recuperarli -- ne Cifra, ne Google.',
+  setup_recovery_ack: 'Ho trascritto la frase in un posto sicuro.',
+  recovery_phrase_label: 'Frase di recupero',
+
+  // Configurazione — riscrittura della frase
+  setup_confirm_title: 'Riscrivi la frase',
+  setup_confirm_sub:
+    'Serve a verificare che la copia trascritta sia quella giusta. Spazi e maiuscole non contano.',
+  setup_confirm_mismatch:
+    'Non coincide con la frase qui sopra. Controlla quello che hai trascritto.',
+
+  // Configurazione — completata
+  setup_done_title: 'Il tuo vault e pronto',
+  setup_done_body:
+    'Tutto quello che aggiungi da qui viene cifrato su questo dispositivo prima di essere salvato.',
+
+  // Schermata di sblocco
+  unlock_title: 'Sblocca il tuo vault',
+  unlock_sub: 'La tua password principale decifra questo dispositivo.',
+  unlock_password_label: 'Password principale',
+  unlock_btn: 'Sblocca',
+  unlocking: 'Sblocco in corso...',
+  unlock_use_recovery: 'Usa la frase di recupero',
+  unlock_use_password: 'Usa la password principale',
+  unlock_recovery_title: 'Sblocca con la frase di recupero',
+  unlock_recovery_sub:
+    'I 32 caratteri che hai trascritto durante la configurazione.',
+  unlock_error_vault_exists:
+    'Questo dispositivo ha gia un vault. Sbloccalo qui sotto.',
+  unlock_error_secret_rejected: 'Non apre questo vault.',
+  unlock_error_phrase_malformed:
+    'Non e una frase di recupero. Sono 32 caratteri, in 8 gruppi da 4.',
+  unlock_error_record_invalid:
+    'Questo record del vault non e leggibile. Ripristina da un backup.',
+  unlock_error_environment:
+    'Il browser non e riuscito a eseguire lo sblocco. Ricarica la pagina e riprova.',
+
   // Buttons
   continue_btn: 'Continua',
+  back_btn: 'Indietro',
+  identity_lock: 'Blocca',
+  signout_btn: 'Esci',
   create_vault_btn: 'Crea il mio vault',
   creating_btn: 'Creazione in corso...',
   continue_overview: 'Continua alla panoramica',
