@@ -63,6 +63,18 @@ export const it: Strings = {
   shell_more: 'Altro',
   shell_soon: 'Presto',
 
+  // Install prompt — l'affordance di installazione PWA (FOUN-06, D24).
+  // `install_ios_body` è la variante iOS/iPadOS: WebKit non emette mai
+  // `beforeinstallprompt`, quindi non c'è nulla da premere e il testo nomina
+  // il comando del browser.
+  install_title: 'Installa Cifra',
+  install_body:
+    "Aggiungi Cifra alla schermata Home. Si apre come un'app e continua a funzionare offline.",
+  install_ios_body:
+    'Aggiungi Cifra alla schermata Home: apri il menu Condividi e scegli "Aggiungi a Home".',
+  install_action: 'Installa',
+  install_dismiss: 'Non ora',
+
   // Sync states
   sync_synced: 'Sincronizzato',
   sync_dirty: 'Da salvare...',
