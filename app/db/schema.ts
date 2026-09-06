@@ -10,7 +10,7 @@
  * >   content.
  * > - **Encrypted (single blob field):** everything sensitive — `amount`,
  * >   `description`, `category`, `notes`, and any free text.
- * > - **Plaintext by design:** the `meta` table (wrapped data key, salt, KDF
+ * > - **Plaintext by design:** the `meta` table (both wrapped data keys, salts,
  * >   params).
  *
  * ## Why the stores string is *derived*, not written
@@ -142,11 +142,12 @@ export type TableAllowlist = Readonly<Record<string, TableSpec>>;
  */
 export const TABLE_ALLOWLIST = {
   /**
-   * Plaintext by design (§Table field allowlist). It holds the wrapped data
-   * key, the Argon2id salt, and the KDF parameters — the material needed to
-   * *derive* the key, none of which is secret and all of which must be readable
-   * before any key exists. Encrypting it under the key it is used to obtain is
-   * circular.
+   * Plaintext by design (§Table field allowlist). It holds **both** wrapped
+   * copies of the data key — the one under the master key and the one under the
+   * recovery key (D26) — with their salts and the Argon2id parameters: the
+   * material needed to *derive* the key, none of which is secret and all of
+   * which must be readable before any key exists. Encrypting it under the key it
+   * is used to obtain is circular.
    *
    * Fields are deliberately not enumerated: the guard elsewhere in this file
    * exists to stop a *sensitive* field silently landing in plaintext, and this
@@ -159,7 +160,7 @@ export const TABLE_ALLOWLIST = {
     primaryKey: 'key',
     indexes: [],
     rationale:
-      'Wrapped data key, KDF salt and Argon2id parameters. Needed before a key exists; none of it is secret.',
+      'Both wrapped copies of the data key (master password and recovery phrase), their salts and the Argon2id parameters. Needed before a key exists; none of it is secret.',
   },
 
   /**
