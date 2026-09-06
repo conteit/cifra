@@ -34,12 +34,12 @@ function useRegisterServiceWorker() {
 
 // Publishes the db-layer test seam — development and emulator builds only.
 //
-// `app/db/db-test-handle.ts` carries the reasoning; the short version is that
-// nothing in the app imports `app/db` or `app/crypto` yet (#9, #10), so the
-// encrypted database layer had never executed in a browser and the
-// `Dexie.waitFor` guarantee in the middleware was proven only against
-// `fake-indexeddb`. `test/e2e/db-liveness.spec.ts` drives the real middleware
-// through this handle.
+// `app/db/db-test-handle.ts` carries the reasoning and #9's re-justification of
+// it. The short version: the vault flow #9 shipped writes only to `meta`, which
+// the allowlist marks plaintext by design, so no user-facing path yet runs the
+// *encryption middleware* — and per D20 this handle is still the only place
+// that middleware executes in a real engine. `test/e2e/db-liveness.spec.ts`
+// drives it. The first UI that writes an encrypted row retires this.
 //
 // Three properties of this shape, all deliberate:
 //

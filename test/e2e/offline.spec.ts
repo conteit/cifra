@@ -37,9 +37,14 @@ test('reloads the app shell from the precache with the network cut', async ({
   context,
 }) => {
   await page.goto('/');
-  await expect(
-    page.getByRole('heading', { level: 1, name: 'Overview' }),
-  ).toBeVisible();
+  // The sign-in screen, not the overview: since #9 the app is gated, and this
+  // is what an offline visitor is served. It is also the stronger assertion for
+  // *this* requirement — reaching it means the precached document, the JS
+  // bundle, the CSS and the fonts all came back with no network at all, and
+  // that the session store resolved to a real state rather than hanging on one
+  // it could not reach.
+  const signIn = page.locator('[data-screen="sign-in"]');
+  await expect(signIn).toBeVisible({ timeout: 30_000 });
   await waitForServiceWorkerControl(page);
 
   await context.setOffline(true);
@@ -47,15 +52,14 @@ test('reloads the app shell from the precache with the network cut', async ({
     await page.reload();
 
     // Nothing can come off the network now, so anything that renders came out
-    // of the Workbox precache — including the shell itself, which is reached
-    // through the NavigationRoute because "/" is precached as "index.html".
-    await expect(
-      page.getByRole('heading', { level: 1, name: 'Overview' }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole('navigation', { name: 'Main navigation' }),
-    ).toBeVisible();
+    // of the Workbox precache — including the document itself, which is
+    // reached through the NavigationRoute because "/" is precached as
+    // "index.html".
+    await expect(signIn).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole('main')).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Continue with Google' }),
+    ).toBeVisible();
   } finally {
     await context.setOffline(false);
   }

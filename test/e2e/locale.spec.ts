@@ -10,49 +10,64 @@ import { expect, test } from '@playwright/test';
  * store, and that the prerendered `lang="en"` — baked into the one static HTML
  * file a pure SPA serves every visitor — is corrected once the app hydrates.
  * Both were broken before #47 and neither would have failed a test.
+ *
+ * ## Why this asserts on the sign-in screen since #9
+ *
+ * It used to assert on the app shell and the overview page, which every
+ * visitor saw immediately. They no longer do: the shell is behind a gate now,
+ * and **the sign-in screen is what a visitor is actually served in their own
+ * language**. Testing that is closer to the requirement, not further from it —
+ * and it keeps this spec free of the emulator's popup dance, so four browser
+ * locales cost four page loads rather than four sign-ins. The shell's own copy
+ * delivery is exercised past the gate in `smoke.spec.ts`, through the same
+ * route -> store -> component path.
  */
 
 const CASES = [
   {
     tag: 'it-IT',
     lang: 'it',
-    heading: 'Panoramica',
-    welcome: 'Le tue finanze, pronte a iniziare',
-    navLabel: 'Navigazione principale',
+    tagline: 'I tuoi soldi,',
+    title: 'Benvenuto',
+    button: 'Continua con Google',
   },
   {
     // Region is irrelevant: one Italian translation, not one per region.
     tag: 'it-CH',
     lang: 'it',
-    heading: 'Panoramica',
-    welcome: 'Le tue finanze, pronte a iniziare',
-    navLabel: 'Navigazione principale',
+    tagline: 'I tuoi soldi,',
+    title: 'Benvenuto',
+    button: 'Continua con Google',
   },
   {
     tag: 'en-GB',
     lang: 'en',
-    heading: 'Overview',
-    welcome: 'Your finances, ready to begin',
-    navLabel: 'Main navigation',
+    tagline: 'Your money,',
+    title: 'Welcome',
+    button: 'Continue with Google',
   },
   {
     // The documented fallback. A language the app does not ship gets English,
     // not a blank screen and not Italian.
     tag: 'fr-FR',
     lang: 'en',
-    heading: 'Overview',
-    welcome: 'Your finances, ready to begin',
-    navLabel: 'Main navigation',
+    tagline: 'Your money,',
+    title: 'Welcome',
+    button: 'Continue with Google',
   },
 ] as const;
 
-for (const { tag, lang, heading, welcome, navLabel } of CASES) {
+for (const { tag, lang, tagline, title, button } of CASES) {
   test.describe(`browser locale ${tag}`, () => {
     test.use({ locale: tag });
 
     test(`renders in ${lang} and declares lang="${lang}"`, async ({ page }) => {
       await page.setViewportSize({ width: 1280, height: 900 });
       await page.goto('/');
+
+      await expect(page.locator('[data-screen="sign-in"]')).toBeVisible({
+        timeout: 15_000,
+      });
 
       // Non-vacuity: if the context option ever stopped reaching the page, the
       // assertions below would pass for the wrong reason on every English case.
@@ -62,16 +77,16 @@ for (const { tag, lang, heading, welcome, navLabel } of CASES) {
 
       await expect(page.locator('html')).toHaveAttribute('lang', lang);
 
-      // Shell copy (from the layout route) and page copy (from the page).
+      // The app's signature, its heading, and the one control on the screen —
+      // three separate strings from the same table, so a partially translated
+      // render fails rather than passing on whichever one was checked.
+      await expect(page.getByRole('heading', { level: 1 })).toContainText(
+        tagline,
+      );
       await expect(
-        page.getByRole('heading', { level: 1, name: heading }),
+        page.getByRole('heading', { level: 2, name: title }),
       ).toBeVisible();
-      await expect(
-        page.getByRole('navigation', { name: navLabel }),
-      ).toBeVisible();
-      await expect(
-        page.getByRole('heading', { level: 2, name: welcome }),
-      ).toBeVisible();
+      await expect(page.getByRole('button', { name: button })).toBeVisible();
     });
   });
 }
@@ -94,6 +109,14 @@ test('the prerendered shell declares the default locale and carries no copy', as
 
   expect(html).toContain('<html lang="en">');
   for (const phrase of [
+    // The sign-in screen, which is what a visitor now sees first…
+    'Benvenuto',
+    'Welcome',
+    'I tuoi soldi',
+    'Your money',
+    'Continua con Google',
+    'Continue with Google',
+    // …and the shell and overview behind it.
     'Panoramica',
     'Overview',
     'Le tue finanze',
