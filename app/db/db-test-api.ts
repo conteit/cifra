@@ -3,7 +3,8 @@
  * reachable from page context so a Playwright spec can drive them.
  *
  * Read `db-test-handle.ts` first — it carries the *why*, the build-time gate,
- * and the expected lifetime of this module. This file is only the surface.
+ * and the expected lifetime of this module, including why #9 re-justified it
+ * instead of deleting it. This file is only the surface.
  *
  * ## What is exposed, and what deliberately is not
  *

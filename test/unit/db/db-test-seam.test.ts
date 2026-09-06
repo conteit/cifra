@@ -8,10 +8,14 @@ import { REPO_ROOT, repoImportGraph } from '../../support/repo-graph';
 
 /**
  * The db test seam (#42) is a deliberate hole in the app: a `window` property
- * that hands page code the encrypted database and the vault key hierarchy. It
- * exists because nothing in the app imports `app/db/` yet, so
- * `test/e2e/db-liveness.spec.ts` has nothing to click and the middleware would
- * otherwise never execute in a browser at all.
+ * that hands page code the encrypted database and the vault key hierarchy.
+ *
+ * #9 shipped the vault-setup flow and deleted #44's session handle outright,
+ * but kept this one: the vault lives in `meta`, which is plaintext by design,
+ * so no user-facing write yet passes through the *encryption middleware* —
+ * and per D20 this is still the only place that middleware runs in a real
+ * engine. `app/db/db-test-handle.ts` carries the full argument and the
+ * condition that retires it (the first UI that writes an encrypted row).
  *
  * A hole like that is only acceptable while it is *provably* absent from a
  * production build. Three mechanisms keep it that way and each is asserted
@@ -36,9 +40,9 @@ const read = (relativePath: string): string =>
 
 /**
  * The build-time condition, written out exactly as it must appear in source —
- * the same two clauses `test/unit/auth-emulator.test.ts` pins for the session
- * handle. Not built from a constant: the point is that the literal is spelled
- * out at the branch site.
+ * the same two clauses `test/unit/auth-emulator.test.ts` pins for the emulator
+ * branch. Not built from a constant: the point is that the literal is spelled
+ * out at the branch site, which is what lets the bundler fold it.
  */
 const MODE_GUARD = [
   "import.meta.env.MODE === 'development'",

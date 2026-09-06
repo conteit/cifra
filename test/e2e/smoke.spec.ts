@@ -1,18 +1,70 @@
 import { expect, type Page, test } from '@playwright/test';
 
+import {
+  createVaultThroughSetup,
+  signInThroughEmulator,
+} from './support/journey';
+
 /**
- * The Phase 1 success criterion this file guards: the app lands on the styled
+ * The Phase 1 success criterion this file guards: sign-in lands on the styled
  * shell, and the shell's FOUN-09 split is real in a real browser rather than
- * only in Storybook. No auth: nothing here is gated on a session yet — the
- * sign-in screen is #9 and the route guard is #10. Signing in through the
- * Firebase Auth emulator is covered separately, in `auth-emulator.spec.ts`.
+ * only in Storybook.
+ *
+ * ## Why this file signs in now
+ *
+ * Until #9 the app rendered the shell to anybody, so these tests just navigated
+ * to `/`. Since #9 the shell is behind a gate — an identity *and* an open vault
+ * — which is the product behaviour, so the spec goes through the front door.
+ *
+ * It pays for that once. Every test below shares **one page**, created and
+ * taken through sign-in and vault setup in `beforeAll`, because the emulator's
+ * popup dance costs seconds and is the one fragile thing in the suite (#71).
+ * `mode: 'serial'` is what makes a shared page legitimate: the tests run in
+ * order in one worker, and if the setup fails the rest are skipped rather than
+ * failing one by one with the same cause.
+ *
+ * **Nothing here may reload.** The data key lives in module-scoped memory only
+ * (§Session lifetime), so a reload comes back signed in and *locked*, and lands
+ * on the unlock screen. Viewport changes do not reload, which is why every test
+ * below resizes rather than navigating.
  */
 
-test('renders the app shell with landmarks and a working skip link', async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 1280, height: 900 });
+test.describe.configure({ mode: 'serial', retries: 2 });
+
+let page: Page;
+
+test.beforeAll(async ({ browser }) => {
+  // 240s, not the 30s default: this beforeAll contains a real Google popup
+  // against the Auth emulator and a real Argon2id derivation.
+  test.setTimeout(240_000);
+
+  page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   await page.goto('/');
+  await signInThroughEmulator(page);
+  await createVaultThroughSetup(page);
+});
+
+test.afterAll(async () => {
+  await page.close();
+});
+
+/**
+ * Drops focus back to the document.
+ *
+ * The page is shared, so focus survives from one test to the next — and three
+ * of the tests below assert on what Tab reaches *from the top of the document*.
+ * Without this they would start wherever the previous test left the caret and
+ * quietly assert something else.
+ */
+async function resetFocus(): Promise<void> {
+  await page.evaluate(() => {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement) active.blur();
+  });
+}
+
+test('renders the app shell with landmarks and a working skip link', async () => {
+  await page.setViewportSize({ width: 1280, height: 900 });
 
   await expect(
     page.getByRole('heading', { level: 1, name: 'Overview' }),
@@ -23,6 +75,7 @@ test('renders the app shell with landmarks and a working skip link', async ({
   await expect(page.getByRole('main')).toBeVisible();
 
   // The skip link is the first thing Tab reaches, and it targets <main>.
+  await resetFocus();
   await page.keyboard.press('Tab');
   const skip = page.getByRole('link', { name: 'Skip to content' });
   await expect(skip).toBeFocused();
@@ -30,11 +83,8 @@ test('renders the app shell with landmarks and a working skip link', async ({
   await expect(page.getByRole('main')).toHaveAttribute('id', 'main-content');
 });
 
-test('shows the sidebar rail at/above 900px and the bottom bar below it', async ({
-  page,
-}) => {
+test('shows the sidebar rail at/above 900px and the bottom bar below it', async () => {
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto('/');
   await expect(page.getByTestId('shell-nav-rail')).toBeVisible();
   await expect(page.getByTestId('shell-nav-bar')).toBeHidden();
 
@@ -63,11 +113,8 @@ const BOUNDARY = [
 ] as const;
 
 for (const { width, present, absent, items } of BOUNDARY) {
-  test(`at ${width}px exactly one nav is present: ${present}`, async ({
-    page,
-  }) => {
+  test(`at ${width}px exactly one nav is present: ${present}`, async () => {
     await page.setViewportSize({ width, height: 900 });
-    await page.goto('/');
 
     // One landmark, always. What changes is which list lives inside it.
     await expect(page.getByRole('navigation')).toHaveCount(1);
@@ -86,7 +133,7 @@ for (const { width, present, absent, items } of BOUNDARY) {
     // …and nothing to the tab order. Tab from the top of the document; the
     // first nav control focus reaches must belong to the present arrangement,
     // and no control of the absent one may be reached at all.
-    const owners = await tabThroughNavOwners(page);
+    const owners = await tabThroughNavOwners();
     expect(owners).toContain(present);
     expect(owners).not.toContain(absent);
   });
@@ -96,10 +143,11 @@ for (const { width, present, absent, items } of BOUNDARY) {
  * Tabs forward from the top of the document and reports which nav arrangement
  * each focused control belongs to, in order.
  */
-async function tabThroughNavOwners(page: Page): Promise<string[]> {
+async function tabThroughNavOwners(): Promise<string[]> {
+  await resetFocus();
   const owners: string[] = [];
   // Enough presses to walk the skip link, the header and every nav control.
-  for (let index = 0; index < 16; index += 1) {
+  for (let index = 0; index < 18; index += 1) {
     await page.keyboard.press('Tab');
     const owner = await page.evaluate(() => {
       const active = document.activeElement;
@@ -112,11 +160,8 @@ async function tabThroughNavOwners(page: Page): Promise<string[]> {
   return owners;
 }
 
-test('reaches every nav destination on mobile, four in the bar and three in the sheet', async ({
-  page,
-}) => {
+test('reaches every nav destination on mobile, four in the bar and three in the sheet', async () => {
   await page.setViewportSize({ width: 402, height: 844 });
-  await page.goto('/');
 
   await expect(
     page.locator('[data-testid="shell-nav-bar"] [data-nav-id]'),

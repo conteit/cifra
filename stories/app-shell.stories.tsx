@@ -67,7 +67,11 @@ function MockPage({ locale, heading }: { locale: Locale; heading: string }) {
   );
 }
 
-/** The identity slot's future occupant (#9), mocked as a plain chip. */
+/**
+ * A stand-in for the identity slot, so these stories specify the *shell's*
+ * layout without depending on what is put in it. The real occupant landed with
+ * #9 and has its own spec at `Screens/IdentityChip`.
+ */
 function IdentityChip({ locale }: { locale: Locale }) {
   return (
     <span className="rounded-pill border border-rule bg-surface-inset px-6 py-3 font-mono text-label-sm uppercase text-text-secondary">
