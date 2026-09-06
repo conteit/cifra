@@ -36,14 +36,15 @@ import { describe, expect, it } from 'vitest';
 
 /**
  * Directories scanned, relative to `app/`, walked recursively. `ui` holds the
- * primitives, `shell` the layout that composes them, and `routes` the pages
- * that mount inside it — V1-3 binds all three.
+ * primitives, `shell` the layout that composes them, `screens` the full-page
+ * screens that render outside it (sign-in, vault setup, unlock — #9), and
+ * `routes` the pages that mount inside it. V1-3 binds all four.
  *
  * This list is not the safety net: `the scan reaches every painting source`
  * below is, and it fails if a new `.tsx` appears under `app/` that neither
  * lives in one of these directories nor is named in {@link UNSCANNED}.
  */
-const scannedDirs = ['ui', 'shell', 'routes'] as const;
+const scannedDirs = ['ui', 'shell', 'screens', 'routes'] as const;
 
 /**
  * Painting sources under `app/` that are deliberately outside the scan, with
@@ -224,7 +225,11 @@ describe('app components use semantic tokens only (V1-3)', () => {
     expect(files.map((f) => f.name)).toEqual(
       expect.arrayContaining([
         'routes/app-layout.tsx',
+        'routes/gate.tsx',
         'routes/home.tsx',
+        'screens/sign-in-screen.tsx',
+        'screens/vault-setup-screen.tsx',
+        'screens/vault-unlock-screen.tsx',
         'shell/app-shell.tsx',
         'shell/nav-items.ts',
         'ui/button.tsx',

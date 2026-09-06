@@ -4,10 +4,10 @@ import { reactRouter } from '@react-router/dev/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig, type Plugin } from 'vite';
 import { type VitePluginPWAAPI, VitePWA } from 'vite-plugin-pwa';
-// The three app imports below spell out `.ts`: they are the few specifiers
+// The two app imports below spell out `.ts`: they are the few specifiers
 // Vite's config loader has to resolve itself, and its forthcoming native loader
 // cannot infer the extension. `allowImportingTsExtensions` in tsconfig.json
-// exists for these imports and no others — which is also why each of the three
+// exists for these imports and no others — which is also why each of the
 // modules they name deliberately imports nothing itself.
 import { DB_TEST_HANDLE } from './app/db/db-test-handle.ts';
 import {
@@ -16,7 +16,6 @@ import {
   AUTH_EMULATOR_MODE,
   AUTH_EMULATOR_URL,
 } from './app/services/auth/auth-emulator.ts';
-import { SESSION_TEST_HANDLE } from './app/stores/session-test-handle.ts';
 
 // React Router (framework mode) sets per-environment build.outDir via the
 // Vite Builder/Environment API rather than the shared top-level config, so
@@ -136,23 +135,26 @@ function assertNavigateFallbackIsPrecached(swPath: string): void {
 
 /**
  * Every string that exists in the tree only because a build is a development or
- * emulator build: the Auth emulator path, and the two `window` handles the e2e
- * specs drive the app through — the session store (#44) and the db layer (#42).
+ * emulator build: the Auth emulator path, and the one remaining `window` handle
+ * an e2e spec drives the app through — the db layer's (#42).
  *
  * They are imported from the app's own modules rather than retyped here, so a
  * rename cannot leave the guard checking for a token nothing emits any more —
  * which is the failure mode that makes a negative assertion quietly vacuous.
  *
- * The list is one list on purpose. Both handles are gated by the *same*
- * `import.meta.env.MODE` comparison and both are asserted in both directions by
- * the same plugin below, so splitting them would create a second guard to keep
- * in step with the first for no gain.
+ * The list is one list on purpose: every token here is gated by the *same*
+ * `import.meta.env.MODE` comparison and asserted in both directions by the same
+ * plugin below, so splitting them would create a second guard to keep in step
+ * with the first for no gain.
+ *
+ * #44's session handle was the fifth entry and is gone: #9 shipped a real
+ * sign-in screen, so `test/e2e/auth-emulator.spec.ts` clicks that instead of
+ * reaching into the store through `window`.
  */
 const EMULATOR_ONLY_TOKENS: readonly string[] = [
   AUTH_EMULATOR_BUILD_MARKER,
   AUTH_EMULATOR_URL,
   AUTH_EMULATOR_CONFIG.projectId,
-  SESSION_TEST_HANDLE,
   DB_TEST_HANDLE,
 ];
 
@@ -225,8 +227,8 @@ function emulatorBundleGuard(useEmulator: boolean): Plugin {
           'Emulator bundle guard: a production build must not contain the Firebase Auth ' +
             `emulator path or a test handle, but ${CLIENT_OUT_DIR} still mentions ${present.join(', ')}. ` +
             'Something made one of the gated branches un-foldable — most likely an ' +
-            '`import.meta.env.MODE === …` comparison in app/services/auth/firebase-auth-port.ts, ' +
-            'app/stores/session-instance.ts or app/root.tsx was replaced by a value the ' +
+            '`import.meta.env.MODE === …` comparison in app/services/auth/firebase-auth-port.ts ' +
+            'or app/root.tsx was replaced by a value the ' +
             'bundler cannot resolve at build time. Shipping this would put an emulator code ' +
             'path, or a debug handle onto the encrypted database, in front of real users. ' +
             'See issues #44 and #42.',

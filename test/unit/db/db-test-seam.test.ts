@@ -3,7 +3,6 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { DB_TEST_HANDLE } from '../../../app/db/db-test-handle';
-import { SESSION_TEST_HANDLE } from '../../../app/stores/session-test-handle';
 import { filesUnder, packagesMatching } from '../../support/import-graph';
 import { REPO_ROOT, repoImportGraph } from '../../support/repo-graph';
 
@@ -47,9 +46,8 @@ const MODE_GUARD = [
 ];
 
 describe('the handle name', () => {
-  it('is namespaced and distinct from the session handle', () => {
+  it('is namespaced', () => {
     expect(DB_TEST_HANDLE.startsWith('__cifra')).toBe(true);
-    expect(DB_TEST_HANDLE).not.toBe(SESSION_TEST_HANDLE);
   });
 });
 
@@ -87,7 +85,7 @@ describe('the production-bundle guard covers this handle too', () => {
 
 describe('the seam obeys the layer contract', () => {
   it('db-test-handle.ts imports nothing — vite.config.ts reads it', () => {
-    // Same reasoning as `auth-emulator.ts` and `session-test-handle.ts`: Vite's
+    // Same reasoning as `auth-emulator.ts`: Vite's
     // native config loader warns about every extensionless specifier reachable
     // from the config, transitive ones included.
     const graph = repoImportGraph('app/db/db-test-handle.ts');

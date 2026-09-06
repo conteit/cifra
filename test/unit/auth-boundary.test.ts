@@ -61,7 +61,9 @@ describe('Firebase SDK containment', () => {
     // production-bundle guard as well as by the adapter, so an SDK import here
     // would pull Firebase into the build config too.
     'app/services/auth/auth-emulator.ts',
-    'app/stores/session-test-handle.ts',
+    // #9's narrowing helper. It exists outside the adapter precisely so it can
+    // be unit-tested without the SDK; an import here would undo that.
+    'app/services/auth/auth-user.ts',
   ])('%s is free of the Firebase SDK', (entry) => {
     const graph = repoImportGraph(entry);
     expect(packagesMatching(graph, ...FORBIDDEN_PACKAGES)).toEqual([]);

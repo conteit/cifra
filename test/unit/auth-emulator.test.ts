@@ -10,18 +10,16 @@ import {
   AUTH_EMULATOR_URL,
 } from '../../app/services/auth/auth-emulator';
 import { readFirebaseConfig } from '../../app/services/auth/firebase-config';
-import { SESSION_TEST_HANDLE } from '../../app/stores/session-test-handle';
 import { REPO_ROOT } from '../support/repo-graph';
 
 /**
- * The Auth-emulator wiring (#44) is spread over six files that have to agree
+ * The Auth-emulator wiring (#44) is spread over five files that have to agree
  * with each other and cannot be checked by the type system:
  *
  *   · `firebase.json`            — the port the emulator binds
  *   · `auth-emulator.ts`         — the port the app dials
  *   · `package.json`             — the project id and mode the scripts pass
  *   · `firebase-auth-port.ts`    — the mode literals the branch tests
- *   · `session-instance.ts`      — the same literals, for the e2e handle
  *   · `vite.config.ts`           — the guard that reads the built bundle back
  *
  * A disagreement between any two of them fails as a two-minute e2e hang or, far
@@ -140,19 +138,11 @@ describe('npm scripts', () => {
 
 describe('the emulator branch is written so the bundler can delete it', () => {
   const port = read('app/services/auth/firebase-auth-port.ts');
-  const instance = read('app/stores/session-instance.ts');
 
   it.each(MODE_GUARD)(
     'firebase-auth-port.ts tests `%s` as a source literal',
     (clause) => {
       expect(port).toContain(clause);
-    },
-  );
-
-  it.each(MODE_GUARD)(
-    'session-instance.ts tests `%s` as a source literal',
-    (clause) => {
-      expect(instance).toContain(clause);
     },
   );
 
@@ -169,9 +159,16 @@ describe('the emulator branch is written so the bundler can delete it', () => {
     expect(port).toContain('readFirebaseConfig(import.meta.env)');
   });
 
-  it('exposes the session store on the handle the e2e spec reads', () => {
-    expect(instance).toContain('SESSION_TEST_HANDLE');
-    expect(SESSION_TEST_HANDLE.startsWith('__cifra')).toBe(true);
+  it('keeps the composition root free of a build-gated test handle', () => {
+    // #44 published the live store on `window.__cifraSession` because there
+    // was no sign-in UI for a Playwright spec to click. #9 shipped one, so the
+    // handle, its module and its entry in the bundle guard are gone and the
+    // spec drives the real screen. Asserted rather than assumed: a
+    // reintroduced handle would be a debug hook onto the session store, gated
+    // only by a fold nobody is watching any more.
+    const instance = read('app/stores/session-instance.ts');
+    expect(instance).not.toContain('import.meta.env.MODE');
+    expect(instance).not.toContain('__cifraSession');
   });
 });
 
@@ -183,7 +180,6 @@ describe('the production-bundle guard', () => {
       'AUTH_EMULATOR_BUILD_MARKER',
       'AUTH_EMULATOR_URL',
       'AUTH_EMULATOR_CONFIG.projectId',
-      'SESSION_TEST_HANDLE',
       // #42's db seam rides the same guard. `test/unit/db/db-test-seam.test.ts`
       // owns the rest of that handle's gating; it is listed here because this
       // is the assertion that claims the list is *complete*.
