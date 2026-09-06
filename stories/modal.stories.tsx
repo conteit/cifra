@@ -1,8 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { expect, fn, userEvent, within } from 'storybook/test';
 
 import { Button } from '../app/ui/button';
+import { cx, focusRing } from '../app/ui/cx';
 import { Modal } from '../app/ui/modal';
 import { type Bilingual, type Locale, localeFrom, t } from './locale';
 
@@ -14,6 +15,8 @@ import { type Bilingual, type Locale, localeFrom, t } from './locale';
        and inertness, not a JS approximation;
      · it exposes the `dialog` role with an accessible name from its title;
      · Escape dismisses and returns focus to whatever opened it;
+     · a nested widget that claims Escape keeps it — the modal only acts on an
+       Escape no descendant has already handled;
      · a backdrop click dismisses, a drag out of the panel does not;
      · the page behind cannot scroll while it is open;
      · `dismissible={false}` removes every implicit exit.
@@ -45,7 +48,20 @@ const copy = {
     it: 'Un dialogo lungo scorre dentro la viewport, non nella pagina dietro.',
   },
   pageHeading: { en: 'Transactions', it: 'Transazioni' },
+  categoryLabel: { en: 'Category', it: 'Categoria' },
+  categoryPlaceholder: { en: 'Choose a category', it: 'Scegli una categoria' },
+  categoryHint: {
+    en: 'Escape closes this list first; a second Escape closes the dialog.',
+    it: 'Esc chiude prima questa lista; un secondo Esc chiude il dialogo.',
+  },
 } satisfies Record<string, Bilingual>;
+
+/** Categories offered by the nested combobox. Invented, like every fixture. */
+const categories = [
+  { id: 'groceries', en: 'Groceries', it: 'Spesa' },
+  { id: 'transport', en: 'Transport', it: 'Trasporti' },
+  { id: 'utilities', en: 'Utilities', it: 'Utenze' },
+] satisfies { id: string; en: string; it: string }[];
 
 /** Stable keys for repeated filler copy — the list never reorders. */
 function filler(count: number, prefix: string): string[] {
@@ -80,12 +96,91 @@ function Page({
   );
 }
 
+/**
+ * A nested popover of the shape Phase 2's import wizard and Phase 3's manual
+ * entry will drop inside a dialog — a category picker, a date picker: a
+ * trigger plus a panel that is expected to close itself on `Escape`.
+ *
+ * It claims the key the one way `Modal` recognises: `preventDefault()` on its
+ * own `keydown`, while the panel is open. Focus stays on the trigger, so the
+ * event starts there and the modal's handler — sitting at the top of the same
+ * bubble path — sees `defaultPrevented` and leaves it alone.
+ */
+function CategoryPicker({ locale }: { locale: Locale }) {
+  const [expanded, setExpanded] = useState(true);
+  const [chosen, setChosen] = useState<string | null>(null);
+  const id = useId();
+  const labelId = `${id}-label`;
+  const triggerId = `${id}-trigger`;
+  const panelId = `${id}-panel`;
+
+  return (
+    <div className="mt-8 flex flex-col gap-3">
+      <span
+        id={labelId}
+        className="font-mono text-label uppercase text-text-muted"
+      >
+        {copy.categoryLabel[locale]}
+      </span>
+      <button
+        type="button"
+        id={triggerId}
+        aria-labelledby={`${labelId} ${triggerId}`}
+        aria-expanded={expanded}
+        aria-controls={panelId}
+        onClick={() => setExpanded((value) => !value)}
+        onKeyDown={(event) => {
+          if (event.key !== 'Escape' || !expanded) return;
+          // The contract with Modal: claim the key and the modal stands down.
+          event.preventDefault();
+          setExpanded(false);
+        }}
+        className={cx(
+          'w-full rounded-control border border-rule bg-surface-card px-6 py-5',
+          'text-left font-body text-row text-text-primary',
+          focusRing,
+        )}
+      >
+        {chosen ?? copy.categoryPlaceholder[locale]}
+      </button>
+      <div
+        id={panelId}
+        hidden={!expanded}
+        className="flex flex-col gap-2 rounded-control border border-rule bg-surface-card p-3 shadow-float"
+      >
+        {categories.map((category) => (
+          <button
+            key={category.id}
+            type="button"
+            onClick={() => {
+              setChosen(category[locale]);
+              setExpanded(false);
+            }}
+            className={cx(
+              'rounded-control px-5 py-4 text-left font-body text-row text-text-primary',
+              'hover:bg-surface-inset',
+              focusRing,
+            )}
+          >
+            {category[locale]}
+          </button>
+        ))}
+      </div>
+      <p className="font-body text-row-sub text-text-muted">
+        {copy.categoryHint[locale]}
+      </p>
+    </div>
+  );
+}
+
 type DemoProps = {
   locale: Locale;
   initiallyOpen?: boolean;
   dismissible?: boolean;
   withFooter?: boolean;
   longContent?: boolean;
+  /** Renders a popover inside the panel that owns `Escape` while it is open. */
+  nestedPicker?: boolean;
   onClose?: () => void;
 };
 
@@ -95,6 +190,7 @@ function ModalDemo({
   dismissible = true,
   withFooter = true,
   longContent = false,
+  nestedPicker = false,
   onClose,
 }: DemoProps) {
   const [open, setOpen] = useState(initiallyOpen);
@@ -141,6 +237,7 @@ function ModalDemo({
         ) : (
           <p>{copy.body[locale]}</p>
         )}
+        {nestedPicker ? <CategoryPicker locale={locale} /> : null}
       </Modal>
     </Page>
   );
@@ -299,6 +396,58 @@ export const EscapeDismisses: Story = {
     await expect(canvasElement.ownerDocument.body.style.overflow).not.toBe(
       'hidden',
     );
+  },
+};
+
+/**
+ * Escape belongs to the innermost widget that wants it.
+ *
+ * `Modal` still handles Escape itself rather than leaving it to the UA's
+ * `cancel` event — the UA path fires only for trusted key input, so it cannot
+ * be asserted here — but it now stands down when the event arrives already
+ * `defaultPrevented`. That keeps the whole behaviour reachable from a
+ * synthetic `keydown`: this play function never needs real UA key input, and
+ * `EscapeDismisses` above still proves the unclaimed case.
+ */
+export const NestedWidgetOwnsEscape: Story = {
+  args: { onClose: fn() },
+  render: (args, ctx) => (
+    <ModalDemo
+      locale={localeFrom(ctx.globals)}
+      nestedPicker
+      onClose={args.onClose}
+    />
+  ),
+  play: async ({ args, canvasElement, globals }) => {
+    const locale = localeFrom(globals);
+    const dialog = dialogOf(canvasElement);
+    const inDialog = within(dialog);
+
+    const trigger = inDialog.getByRole('button', {
+      name: new RegExp(copy.categoryLabel[locale], 'i'),
+    });
+    await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+    // Focus the widget, so the keydown starts inside it and bubbles out
+    // through the modal — the path a real combobox or date picker takes.
+    await userEvent.click(trigger);
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(trigger);
+    await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    await expect(canvasElement.ownerDocument.activeElement).toBe(trigger);
+
+    // The widget claims Escape: its panel closes, the dialog does not.
+    await userEvent.keyboard('{Escape}');
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    await expect(args.onClose).not.toHaveBeenCalled();
+    await expect(dialog.open).toBe(true);
+    await expect(dialog.matches(':modal')).toBe(true);
+
+    // With nothing left to claim it, the next Escape reaches the modal — even
+    // though focus is still on the nested trigger.
+    await userEvent.keyboard('{Escape}');
+    await expect(args.onClose).toHaveBeenCalledOnce();
+    await expect(dialog.open).toBe(false);
   },
 };
 
