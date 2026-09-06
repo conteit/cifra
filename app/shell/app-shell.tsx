@@ -75,6 +75,15 @@ export interface AppShellProps {
   /** The signed-in user chip. The seam #9 mounts into; see the note above. */
   identity?: ReactNode;
   /**
+   * A shell-owned strip above the page — today only `<InstallPrompt>`
+   * (FOUN-06), which the layout route wires to the install-prompt controller.
+   * A slot rather than a rendered component for the same reason `identity` is
+   * one: the shell stays free of stores, and the story can drive every state.
+   * It sits inside `<main>` so it lands on the page measure at both
+   * breakpoints without a second `max-w-page` container.
+   */
+  banner?: ReactNode;
+  /**
    * Overrides the nav item table. The app never passes this — `nav-items.ts`
    * stays the single source of truth. It exists so stories can render the
    * shell against mocked routes (every destination `live`), which is the only
@@ -246,6 +255,7 @@ export function AppShell({
   subtitle,
   actions,
   identity,
+  banner,
   items = defaultNavItems,
 }: AppShellProps) {
   const [moreOpen, setMoreOpen] = useState(false);
@@ -381,6 +391,7 @@ export function AppShell({
           tabIndex={-1}
           className="min-w-0 flex-1 px-8 pt-10 pb-32 desktop:px-10 desktop:pb-16"
         >
+          {banner}
           {children}
         </main>
       </div>

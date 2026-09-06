@@ -5,6 +5,11 @@ export {
   type ShellStrings,
 } from './app-shell';
 export {
+  InstallPrompt,
+  type InstallPromptProps,
+  type InstallPromptStrings,
+} from './install-prompt';
+export {
   type NavItem,
   type NavItemId,
   type NavItemStatus,

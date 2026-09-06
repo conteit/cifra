@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router';
 
-import { AppShell } from '../shell';
+import { AppShell, InstallPrompt } from '../shell';
+import { useInstallPrompt } from '../stores/use-install-prompt';
 import { useStrings } from '../stores/use-locale';
 
 /**
@@ -21,12 +22,28 @@ import { useStrings } from '../stores/use-locale';
  * "swapping this one import for a detected locale is the whole change" and
  * that was false: detection needed a resolver, a store, a React binding, and a
  * runtime `<html lang>` (FOUN-07 has four seams, not one — see #47).
+ *
+ * It is also where the install affordance is composed (FOUN-06, #60). The
+ * shell takes it as the `banner` slot and the component itself is dumb, so the
+ * only module that touches the install-prompt controller is this one — the
+ * same route → store → service direction the locale takes above.
  */
 export default function AppLayout() {
   const strings = useStrings();
+  const install = useInstallPrompt();
 
   return (
-    <AppShell strings={strings}>
+    <AppShell
+      strings={strings}
+      banner={
+        <InstallPrompt
+          state={install.state}
+          strings={strings}
+          onInstall={install.install}
+          onDismiss={install.dismiss}
+        />
+      }
+    >
       <Outlet />
     </AppShell>
   );
