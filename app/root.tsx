@@ -102,11 +102,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  // Starts observing Firebase identity for the lifetime of the app. No UI is
-  // gated on it yet — the sign-in screen and the route guard are #9, the lock
-  // screen is #10. This only makes the session store live, so those issues wire
-  // up rather than bootstrap. With the Firebase env unset (CI, a fresh clone)
-  // the store lands in 'unavailable' and the app still renders.
+  // Starts observing Firebase identity for the lifetime of the app. This only
+  // makes the session store live; the gate (`app/routes/gate.tsx`) is what
+  // routes on it. With the Firebase env unset (CI, a fresh clone) the store
+  // lands in 'unavailable' and the app still renders.
   useSessionBootstrap();
 
   return <Outlet />;

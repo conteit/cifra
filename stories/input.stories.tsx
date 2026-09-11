@@ -305,7 +305,7 @@ export const Focused: Story = {
   },
 };
 
-/* ── Composed: the shape #10 (lock screen) will build ───────────────────── */
+/* ── Composed: the shape the unlock screen builds ────────────────────────── */
 
 function UnlockForm({ locale }: { locale: Locale }) {
   const [value, setValue] = useState('');

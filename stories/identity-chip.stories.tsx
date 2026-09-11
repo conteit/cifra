@@ -19,9 +19,9 @@ import { localeFrom } from './locale';
    `showLock` is on only while a data key is held. Locking a vault that is
    already locked is not an offer worth making.
 
-   The lock button is the only lock trigger #9 ships. #10 adds the idle
-   auto-lock and the tab-close wipe (FOUN-10) — both call the same store action
-   this button does.
+   The lock button is one of three lock edges (FOUN-10): the idle auto-lock
+   and the wipe on leaving the page call the same store action this button
+   does, with a different reason (D28).
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const meta: Meta<typeof IdentityChip> = {
