@@ -146,6 +146,28 @@ export const WrongPasswordItalian: Story = {
   globals: { locale: 'it' },
 };
 
+export const EmptyPassword: Story = {
+  // #91: an empty submit is the user's to fix, and reads as such — not as
+  // "your browser could not run the unlock".
+  render: (args, ctx) => {
+    const strings = stringsFor(localeFrom(ctx.globals));
+    return screen(ctx, args, {
+      errorMessage: vaultErrorMessage(strings, 'password/malformed', 'unlock'),
+    });
+  },
+  play: async ({ canvasElement, globals }) => {
+    const strings = stringsFor(localeFrom(globals));
+    await expect(within(canvasElement).getByRole('alert')).toHaveTextContent(
+      strings.unlock_error_password_malformed,
+    );
+  },
+};
+
+export const EmptyPasswordItalian: Story = {
+  ...EmptyPassword,
+  globals: { locale: 'it' },
+};
+
 /* ── locked by the idle timeout ─────────────────────────────────────────── */
 
 export const IdleLocked: Story = {

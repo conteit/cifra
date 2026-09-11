@@ -34,7 +34,13 @@
  */
 
 import { recoveryPhrasesMatch } from '../../crypto/recovery-phrase';
-import { createVault, unlockVault, type VaultRecord } from '../../crypto/vault';
+import {
+  type CreatedVault,
+  createVault,
+  isPasswordInputError,
+  unlockVault,
+  type VaultRecord,
+} from '../../crypto/vault';
 import type {
   VaultCreateOutcome,
   VaultKeySink,
@@ -88,7 +94,18 @@ export function createVaultService({
         return { ok: false, reason: 'vault/exists' };
       }
 
-      const created = await createVault(password, optionsFor(options));
+      let created: CreatedVault;
+      try {
+        created = await createVault(password, optionsFor(options));
+      } catch (error) {
+        // The crypto layer throws for a password it will not derive from —
+        // empty or over-long — because `createVault` has no result channel.
+        // Here there is one, and this is the user's mistake to fix (#91).
+        if (isPasswordInputError(error)) {
+          return { ok: false, reason: 'password/malformed' };
+        }
+        throw error;
+      }
       await records.write(created.record);
       keys.unlock(created.dataKey);
       return { ok: true, recoveryPhrase: created.recoveryPhrase };

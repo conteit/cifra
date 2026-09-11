@@ -115,6 +115,8 @@ export const en = {
   unlock_error_secret_rejected: 'That does not open this vault.',
   unlock_error_phrase_malformed:
     'That is not a recovery phrase. It is 32 characters, in 8 groups of 4.',
+  unlock_error_password_malformed:
+    'Enter your master password — it cannot be empty or longer than 1024 characters.',
   unlock_error_record_invalid:
     'This vault record cannot be read. Restore from a backup.',
   unlock_error_environment:
