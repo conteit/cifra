@@ -134,6 +134,15 @@ export const selectIsBusy = (s: VaultState): boolean => s.pending !== 'idle';
 
 export function createVaultStore(service: VaultService): VaultStore {
   return createStore<VaultState>((set, get) => {
+    /**
+     * Bumped by every `lock()`. An operation reads it before its `await` and
+     * compares after: a lock that landed in between wins over the outcome —
+     * the key the service just took is dropped again and the result is
+     * reported as a failure. Without this, signing out while Argon2id ran
+     * finished into an unlocked vault with nobody signed in (#90).
+     */
+    let lockGeneration = 0;
+
     /** Feeds D22's three-state busy signal into the store. */
     const onStateChange = (state: 'starting' | 'deriving' | 'settled') => {
       set({ derivation: state === 'settled' ? null : state });
@@ -195,7 +204,16 @@ export function createVaultStore(service: VaultService): VaultStore {
         return await run(
           'creating',
           async () => {
+            const generation = lockGeneration;
             const outcome = await service.create(password, { onStateChange });
+            if (generation !== lockGeneration) {
+              // Locked meanwhile. The record is on disk if creation succeeded,
+              // so the honest state is `locked`; the key and the phrase in
+              // the outcome are never adopted.
+              service.lock();
+              if (outcome.ok) set({ status: 'locked' });
+              return false;
+            }
             if (!outcome.ok) {
               // `vault/exists` means another tab won the race. The vault is
               // real and closed, so the honest next screen is unlock.
@@ -221,7 +239,12 @@ export function createVaultStore(service: VaultService): VaultStore {
         return await run(
           'unlocking',
           async () => {
+            const generation = lockGeneration;
             const outcome = await service.unlock(secret, { onStateChange });
+            if (generation !== lockGeneration) {
+              service.lock();
+              return false;
+            }
             if (!outcome.ok) {
               set({ error: outcome.reason });
               return false;
@@ -234,6 +257,7 @@ export function createVaultStore(service: VaultService): VaultStore {
       },
 
       lock(reason: VaultLockReason) {
+        lockGeneration += 1;
         service.lock();
         // Only an open vault becomes a locked one. Locking says nothing about
         // whether a vault *exists*, so `absent`, `unknown` and `unavailable`
