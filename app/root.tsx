@@ -10,6 +10,7 @@ import {
 
 import type { Route } from './+types/root';
 import { DEFAULT_LOCALE } from './i18n';
+import { getInstallPromptController } from './stores/install-prompt-instance';
 import { useDocumentLocale } from './stores/use-locale';
 import { useSessionBootstrap } from './stores/use-session';
 import './app.css';
@@ -107,8 +108,21 @@ export default function App() {
   // routes on it. With the Firebase env unset (CI, a fresh clone) the store
   // lands in 'unavailable' and the app still renders.
   useSessionBootstrap();
+  useInstallPromptCapture();
 
   return <Outlet />;
+}
+
+// Creates the install-prompt controller at first paint, so its
+// `beforeinstallprompt` listener is live when Chromium fires the event —
+// once, seconds after load, long before the shell that *shows* the affordance
+// has mounted (#92). `AppLayout` consumes the same instance later; nothing is
+// rendered here. Client-only: the composition root returns an inert
+// controller where there is no `window`, and the prerender never runs effects.
+function useInstallPromptCapture() {
+  useEffect(() => {
+    getInstallPromptController();
+  }, []);
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {

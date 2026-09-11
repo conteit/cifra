@@ -79,6 +79,21 @@ test('signs in, creates a vault, locks it, unlocks it and idles out', async ({
     // resolved to the unavailable screen the emulator wiring would be dead and
     // everything below would fail for a reason unrelated to sign-in.
     await expect(screen(page, 'sign-in')).toBeVisible({ timeout: 15_000 });
+    // #92: Chromium fires `beforeinstallprompt` once, seconds after load, long
+    // before anyone has signed in. Dispatched on the sign-in screen — the app
+    // has mounted, no shell has — so the affordance assertion after unlock
+    // proves the listener was live from first paint, not from the first
+    // shell render.
+    await page.evaluate(() => {
+      const event = Object.assign(
+        new Event('beforeinstallprompt', { cancelable: true }),
+        {
+          prompt: async () => {},
+          userChoice: Promise.resolve({ outcome: 'dismissed' as const }),
+        },
+      );
+      window.dispatchEvent(event);
+    });
     await expect(screen(page, 'sign-in-unavailable')).toHaveCount(0);
   });
 
@@ -152,6 +167,8 @@ test('signs in, creates a vault, locks it, unlocks it and idles out', async ({
     // success criterion names.
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     await expect(page.getByTestId('lock-vault')).toBeVisible();
+    // FOUN-06: the install strip, fed by the event dispatched before sign-in.
+    await expect(page.getByTestId('install-prompt')).toBeVisible();
   });
 
   await test.step('locking closes the vault but not the session', async () => {
