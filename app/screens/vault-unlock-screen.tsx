@@ -9,16 +9,15 @@ import { ScreenError, ScreenFrame } from './screen-frame';
 /* ═══════════════════════════════════════════════════════════════════════════
    Unlock — the second half of "create vault → lock → unlock".
 
-   ## Scope: this is #9's half, not #10's
+   ## This is the lock screen
 
-   #10 owns the lock *screen*: its presentation as a `dismissible={false}`
-   modal over the app, the 30-minute idle auto-lock, and the wipe on tab close
-   (FOUN-10). What ships here is the smallest thing that makes a created vault
-   re-openable — a full-page unlock with both secrets — because without it #9
-   would ship a vault that can be made and never re-entered, and the journey the
-   architecture's §Testing names could not be written. #10 inherits this
-   component and re-presents it; the store, the service and both call paths
-   below are already in place for it.
+   Mounted full-page by `app/routes/gate.tsx` whenever a vault exists and no
+   data key is held — after the header button, after sign-out, after the idle
+   timeout and after a `pagehide` alike (FOUN-10, D28). It does not know or
+   care which; the one thing it is told is `lockReason`, and the one thing it
+   does with it is swap the subtitle so an *automatic* lock is announced as
+   one. A user back from lunch should read "locked after 30 minutes" before
+   being asked for a password, not wonder whether something broke.
 
    ## One call site for two secrets
 
@@ -36,6 +35,7 @@ export type VaultUnlockStrings = Pick<
   | 'tagline_line2'
   | 'unlock_title'
   | 'unlock_sub'
+  | 'unlock_idle_sub'
   | 'unlock_password_label'
   | 'unlock_btn'
   | 'unlocking'
@@ -58,6 +58,8 @@ export interface VaultUnlockScreenProps {
   derivation: 'starting' | 'deriving' | null;
   /** Already localised. `secret/rejected`, `phrase/malformed`, … */
   errorMessage?: string | null;
+  /** Only `idle` changes the copy; every other lock reads as a plain lock. */
+  lockReason?: 'idle' | null;
   onUnlock: (secret: VaultSecret) => void;
   /** The way out for someone who has lost both secrets. */
   onSignOut: () => void;
@@ -68,6 +70,7 @@ export function VaultUnlockScreen({
   busy,
   derivation,
   errorMessage = null,
+  lockReason = null,
   onUnlock,
   onSignOut,
 }: VaultUnlockScreenProps) {
@@ -98,7 +101,13 @@ export function VaultUnlockScreen({
       taglineLine1={strings.tagline_line1}
       taglineLine2={strings.tagline_line2}
       title={recovery ? strings.unlock_recovery_title : strings.unlock_title}
-      subtitle={recovery ? strings.unlock_recovery_sub : strings.unlock_sub}
+      subtitle={
+        recovery
+          ? strings.unlock_recovery_sub
+          : lockReason === 'idle'
+            ? strings.unlock_idle_sub
+            : strings.unlock_sub
+      }
       footer={
         <div className="flex justify-center">
           <Button variant="quiet" onClick={onSignOut} data-testid="sign-out">

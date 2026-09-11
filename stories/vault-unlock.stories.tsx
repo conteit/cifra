@@ -12,10 +12,13 @@ import { localeFrom } from './locale';
 
    ## Scope
 
-   This is #9's half. #10 owns the lock screen proper: its presentation as a
-   `dismissible={false}` modal over the app, the 30-minute idle auto-lock and
-   the wipe on tab close (FOUN-10). What is specified here is the form itself,
-   which #10 re-presents rather than replaces.
+   The form itself, both secrets, every failure state — and, since #10, the
+   one thing an *automatic* lock adds to it: a subtitle saying the vault
+   locked itself after thirty idle minutes, so a user back from lunch is told
+   why before being asked to type. There is no separate lock screen: the gate
+   mounts this full-page whenever the vault is closed (D28), and what locks
+   it — the header button, sign-out, idle, `pagehide` — is the store's
+   business, not this component's.
 
    ## Two secrets, one call site
 
@@ -53,6 +56,7 @@ function screen(
     busy?: boolean;
     derivation?: 'starting' | 'deriving' | null;
     errorMessage?: string | null;
+    lockReason?: 'idle' | null;
   } = {},
 ) {
   return (
@@ -61,6 +65,7 @@ function screen(
       busy={overrides.busy ?? false}
       derivation={overrides.derivation ?? null}
       errorMessage={overrides.errorMessage ?? null}
+      lockReason={overrides.lockReason ?? null}
       onUnlock={args.onUnlock}
       onSignOut={args.onSignOut}
     />
@@ -138,6 +143,23 @@ export const WrongPassword: Story = {
 
 export const WrongPasswordItalian: Story = {
   ...WrongPassword,
+  globals: { locale: 'it' },
+};
+
+/* ── locked by the idle timeout ─────────────────────────────────────────── */
+
+export const IdleLocked: Story = {
+  render: (args, ctx) => screen(ctx, args, { lockReason: 'idle' }),
+  play: async ({ canvasElement, globals }) => {
+    const strings = stringsFor(localeFrom(globals));
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText(strings.unlock_idle_sub)).toBeVisible();
+    await expect(canvas.queryByText(strings.unlock_sub)).toBeNull();
+  },
+};
+
+export const IdleLockedItalian: Story = {
+  ...IdleLocked,
   globals: { locale: 'it' },
 };
 

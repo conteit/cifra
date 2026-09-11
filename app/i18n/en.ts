@@ -101,6 +101,8 @@ export const en = {
   // Unlock screen
   unlock_title: 'Unlock your vault',
   unlock_sub: 'Your master password decrypts this device.',
+  unlock_idle_sub:
+    'Locked after 30 minutes without activity. Your master password decrypts this device.',
   unlock_password_label: 'Master password',
   unlock_btn: 'Unlock',
   unlocking: 'Unlocking...',

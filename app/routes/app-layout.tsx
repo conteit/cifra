@@ -11,11 +11,11 @@ import { useVault, useVaultActions } from '../stores/use-vault';
  * The layout route every page mounts inside.
  *
  * Declared as a pathless `layout()` in `app/routes.ts`, so any route nested
- * under it gets the shell automatically and any route declared beside it
- * renders bare. That is the seam the auth work uses next sprint: #9's sign-in
- * screen is a *sibling* of this route (no nav, no header until there is a
- * session), and #10's lock screen is a `dismissible={false}` Modal this route
- * will render next to `<AppShell>` once there is a vault to lock.
+ * under it gets the shell automatically. The sign-in, setup and unlock screens
+ * are not siblings of this route but the *gate* above it (D27): they render
+ * instead of the shell, and this layout only ever mounts with an open vault.
+ * There is no lock modal here either — a locked vault unmounts this route
+ * entirely, so nothing below it ever renders without a data key (D28).
  *
  * The shell is locale-free — it takes every string as a prop — so the locale
  * lives here, one layer up, and arrives from the store
@@ -53,7 +53,7 @@ export default function AppLayout() {
           strings={strings}
           label={user?.displayName ?? user?.email ?? ''}
           showLock={vaultStatus === 'unlocked'}
-          onLock={lock}
+          onLock={() => lock('manual')}
           onSignOut={() => void signOut()}
         />
       }

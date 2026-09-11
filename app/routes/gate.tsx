@@ -44,14 +44,20 @@ import { useVault, useVaultActions, useVaultProbe } from '../stores/use-vault';
  *      assume a live data key, which is what lets the db middleware treat
  *      `vault/locked` as a bug rather than a state to render.
  *
- * ## What #10 inherits
+ * ## The lock screen is this gate, not a modal (D28)
  *
- * The unlock screen mounts here as a full page. #10 re-presents it as a
- * `dismissible={false}` modal over the app and adds the idle auto-lock and the
- * tab-close wipe (FOUN-10); the store actions and both unlock paths it needs
- * already exist. The one lock edge that ships with #9 is sign-out, wired in
- * `app/stores/vault-instance.ts`, plus the manual lock button in the identity
- * chip that the e2e journey drives.
+ * The unlock screen mounts here full-page, and that is its final shape. Earlier
+ * notes planned a `dismissible={false}` modal over the app; that would have
+ * kept every page mounted underneath with no data key — contradicting rule 3
+ * above — and left financial content on screen behind the lock. Unmounting
+ * the outlet is what makes "locked" mean *nothing is rendered that needed the
+ * key*. The URL is untouched, so the same page reappears on unlock.
+ *
+ * Every lock edge calls the one store action: the header button (`manual`),
+ * sign-out (`session-ended`) and the idle timeout and `pagehide` (`idle`),
+ * the last two wired in `app/stores/vault-instance.ts` (FOUN-10). The screen
+ * reads the reason only to say "locked after 30 minutes" when that is what
+ * happened.
  */
 export default function Gate() {
   const strings = useStrings();
@@ -68,6 +74,7 @@ export default function Gate() {
   const derivation = useVault((s) => s.derivation);
   const vaultError = useVault((s) => s.error);
   const recoveryPhrase = useVault((s) => s.recoveryPhrase);
+  const lockReason = useVault((s) => s.lockReason);
   const { create, unlock, matchRecoveryPhrase, acknowledgeRecoveryPhrase } =
     useVaultActions();
 
@@ -117,6 +124,7 @@ export default function Gate() {
         busy={pending === 'unlocking'}
         derivation={derivation}
         errorMessage={vaultErrorMessage(strings, vaultError, 'unlock')}
+        lockReason={lockReason === 'idle' ? 'idle' : null}
         onUnlock={(secret) => void unlock(secret)}
         onSignOut={() => void signOut()}
       />
