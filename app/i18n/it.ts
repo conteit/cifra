@@ -125,6 +125,8 @@ export const it: Strings = {
   unlock_error_secret_rejected: 'Non apre questo vault.',
   unlock_error_phrase_malformed:
     'Non e una frase di recupero. Sono 32 caratteri, in 8 gruppi da 4.',
+  unlock_error_password_malformed:
+    'Inserisci la password principale: non può essere vuota né superare i 1024 caratteri.',
   unlock_error_record_invalid:
     'Questo record del vault non e leggibile. Ripristina da un backup.',
   unlock_error_environment:

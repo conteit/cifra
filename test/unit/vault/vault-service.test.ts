@@ -112,6 +112,21 @@ describe('creating a vault', () => {
     expect(store.peek()).toBe(first);
   });
 
+  it('refuses an empty or over-long password as input, writing nothing', async () => {
+    // #91: setup enforces the minimum length in the screen but not the
+    // maximum, and the crypto layer threw for both. A throw reads as "creation
+    // failed" — a result reads as "fix the password".
+    const { vault, store, keys } = service();
+    for (const candidate of ['', 'x'.repeat(1025)]) {
+      expect(await vault.create(candidate)).toEqual({
+        ok: false,
+        reason: 'password/malformed',
+      });
+    }
+    expect(store.writes()).toBe(0);
+    expect(keys.isUnlocked).toBe(false);
+  });
+
   it('writes both wrapped copies together, so a phrase always exists', async () => {
     // D26: a record with a password copy and no recovery copy is a vault whose
     // owner has exactly one route in and no way back from forgetting it.

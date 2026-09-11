@@ -134,13 +134,32 @@ export type VaultSecret =
  *   because "you mistyped it" and "that is not this vault's phrase" are
  *   different things to say to someone who has already lost their password, and
  *   because the phrase is the user's own input, so saying so reveals nothing.
+ * - `password/malformed` — the password path's twin of `phrase/malformed`: an
+ *   empty password, or one past `MAX_PASSWORD_LENGTH`. The KDF refuses both
+ *   before deriving anything (#91). Reported as a rejection because "type a
+ *   password" is something the user can act on, and rendering it as an
+ *   environment failure told them to reload the page instead.
  * - `record/invalid` — the `meta` row is not a usable vault record. Not the
  *   user's fault and not fixable by retyping; it means restore-from-backup.
  */
 export type VaultRejection =
   | 'secret/rejected'
   | 'phrase/malformed'
+  | 'password/malformed'
   | 'record/invalid';
+
+/**
+ * Whether a thrown error is the KDF refusing the *shape* of a password —
+ * empty or over-long — as opposed to failing to run. The one predicate both
+ * the unlock path here and the service's create path use, so the two cannot
+ * disagree about which codes are the user's to fix.
+ */
+export function isPasswordInputError(error: unknown): error is KdfError {
+  return (
+    error instanceof KdfError &&
+    (error.code === 'password/empty' || error.code === 'password/too-long')
+  );
+}
 
 /** Machine-readable reason a vault call was rejected outright. */
 export type VaultErrorCode = 'record/invalid';
@@ -339,12 +358,19 @@ async function openVault(
     // The parameters come from the record — never from ARGON2ID_DEFAULT_PARAMS —
     // because they are what makes derivation reproducible for a vault created
     // under older defaults. They were bounded by `assertVaultRecord` above.
-    keyEncryptionKey = await deriveMasterKey(
-      secret.password,
-      record.kdfSalt,
-      record.kdfParams,
-      options,
-    );
+    try {
+      keyEncryptionKey = await deriveMasterKey(
+        secret.password,
+        record.kdfSalt,
+        record.kdfParams,
+        options,
+      );
+    } catch (error) {
+      if (isPasswordInputError(error)) {
+        return rejected(method, 'password/malformed', error.message);
+      }
+      throw error;
+    }
     wrappedDataKey = record.wrappedDataKey;
   } else {
     try {

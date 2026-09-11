@@ -207,6 +207,25 @@ describe('unlockVault accepts either secret', () => {
     });
   });
 
+  it('rejects an empty or over-long password as input, not as environment', async () => {
+    // #91: the password path used to throw KdfError('password/empty') straight
+    // through, which the store renders as "your browser could not run the
+    // unlock". The recovery path already answers the same mistake with
+    // `phrase/malformed`; the password path answers with its twin.
+    for (const candidate of ['', 'x'.repeat(1025)]) {
+      const result = await unlockVault(
+        vault.record,
+        password(candidate),
+        wiring(),
+      );
+      expect(result).toMatchObject({
+        ok: false,
+        method: 'password',
+        reason: 'password/malformed',
+      });
+    }
+  });
+
   it("rejects another vault's recovery phrase", async () => {
     const other = await createVault(PASSWORD, wiring());
     const result = await unlockVault(

@@ -26,6 +26,7 @@ const SHARED = {
   'vault/exists': 'unlock_error_vault_exists',
   'secret/rejected': 'unlock_error_secret_rejected',
   'phrase/malformed': 'unlock_error_phrase_malformed',
+  'password/malformed': 'unlock_error_password_malformed',
   'record/invalid': 'unlock_error_record_invalid',
 } as const satisfies Record<
   Exclude<VaultErrorCode, 'environment'>,
