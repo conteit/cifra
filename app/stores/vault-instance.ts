@@ -1,6 +1,11 @@
+import {
+  startIdleLock,
+  VAULT_IDLE_TIMEOUT_MS,
+} from '../services/vault/idle-lock';
 import { getVaultService } from '../services/vault/vault-instance';
 import { getSessionStore } from './session-instance';
 import { createVaultStore, type VaultStore } from './vault';
+import { wireIdleLock } from './vault-idle-lock';
 
 /**
  * The composition root for the live vault store — and the one place identity
@@ -17,12 +22,11 @@ import { createVaultStore, type VaultStore } from './vault';
  * lost by unmounting one. The event carries no identity payload by design, so
  * nothing here can bind key material to an account.
  *
- * **What is deliberately not here: the idle auto-lock.** FOUN-10 also asks for
- * a 30-minute idle timeout and a wipe on tab close; both are #10, along with
- * the lock screen's presentation. This file ships the sign-out edge only,
- * because a session that ends while the data key stays live is a security
- * defect rather than a missing feature, and #9 is the change that first makes a
- * data key exist.
+ * The other two FOUN-10 edges live here too, since #10: the 30-minute idle
+ * timeout and the wipe on leaving the page. Both are one watcher
+ * (`app/services/vault/idle-lock.ts`) that runs only while a data key is held
+ * and ends in the same `lock()` the sign-out edge and the header button call,
+ * each with its own reason so the unlock screen can say which it was.
  *
  * Constructed lazily so importing the module has no side effect: the service
  * behind it opens IndexedDB on first use.
@@ -39,7 +43,19 @@ export function getVaultStore(): VaultStore {
   // a component is the point: a signed-out session must drop the data key even
   // if nothing is mounted to notice.
   getSessionStore().onSessionEnded(() => {
-    store.getState().lock();
+    store.getState().lock('session-ended');
+  });
+
+  // `window`, not `document`: input events bubble up to it, `visibilitychange`
+  // arrives there from the document, and `pagehide` fires nowhere else.
+  wireIdleLock(store, {
+    start: (onIdle) =>
+      startIdleLock({
+        target: window,
+        timeoutMs: VAULT_IDLE_TIMEOUT_MS,
+        visibilityState: () => document.visibilityState,
+        onIdle,
+      }),
   });
 
   return instance;

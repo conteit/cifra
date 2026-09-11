@@ -66,6 +66,14 @@ export type VaultStatus =
  */
 export type VaultErrorCode = VaultFailure | 'environment';
 
+/**
+ * Why the vault last went from `unlocked` to `locked`. Read by the unlock
+ * screen so an idle lock can say it was one — a user back from lunch should
+ * not wonder whether something broke. Cleared by the next successful unlock;
+ * never set when there was no open vault to close.
+ */
+export type VaultLockReason = 'manual' | 'idle' | 'session-ended';
+
 export interface VaultState {
   readonly status: VaultStatus;
   readonly pending: VaultOperation;
@@ -74,6 +82,8 @@ export interface VaultState {
   readonly error: VaultErrorCode | null;
   /** Set once by {@link VaultState.create}; never read back from a vault. */
   readonly recoveryPhrase: string | null;
+  /** Non-null from a lock of an open vault until the next successful unlock. */
+  readonly lockReason: VaultLockReason | null;
 
   /** Resolves `unknown` into `absent` or `locked`. Idempotent and cheap. */
   probe(): Promise<void>;
@@ -81,8 +91,12 @@ export interface VaultState {
   create(password: string): Promise<boolean>;
   /** Opens the vault with either secret. Resolves `true` on success. */
   unlock(secret: VaultSecret): Promise<boolean>;
-  /** Drops the data key and the pending recovery phrase. Idempotent. */
-  lock(): void;
+  /**
+   * Drops the data key and the pending recovery phrase. Idempotent. The reason
+   * is required so no call site can pass `lock` straight in as an event
+   * handler and store a `MouseEvent` where a reason should be.
+   */
+  lock(reason: VaultLockReason): void;
   /**
    * Whether what the user typed back is the phrase they were just shown.
    * `false` when there is no phrase in hand, so a confirmation step can never
@@ -157,6 +171,7 @@ export function createVaultStore(service: VaultService): VaultStore {
       derivation: null,
       error: null,
       recoveryPhrase: null,
+      lockReason: null,
 
       async probe() {
         try {
@@ -194,6 +209,7 @@ export function createVaultStore(service: VaultService): VaultStore {
               status: 'unlocked',
               recoveryPhrase: outcome.recoveryPhrase,
               error: null,
+              lockReason: null,
             });
             return true;
           },
@@ -210,14 +226,14 @@ export function createVaultStore(service: VaultService): VaultStore {
               set({ error: outcome.reason });
               return false;
             }
-            set({ status: 'unlocked', error: null });
+            set({ status: 'unlocked', error: null, lockReason: null });
             return true;
           },
           false,
         );
       },
 
-      lock() {
+      lock(reason: VaultLockReason) {
         service.lock();
         // Only an open vault becomes a locked one. Locking says nothing about
         // whether a vault *exists*, so `absent`, `unknown` and `unavailable`
@@ -225,8 +241,10 @@ export function createVaultStore(service: VaultService): VaultStore {
         // send a first-time user to an unlock screen for a vault that is not
         // there, and moving `unlocked` to `absent` would offer to create a
         // second vault over the top of the first.
+        const wasUnlocked = get().status === 'unlocked';
         set({
-          status: get().status === 'unlocked' ? 'locked' : get().status,
+          status: wasUnlocked ? 'locked' : get().status,
+          lockReason: wasUnlocked ? reason : get().lockReason,
           recoveryPhrase: null,
           error: null,
         });
