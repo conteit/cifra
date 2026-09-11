@@ -82,7 +82,7 @@ describe('probing', () => {
     expect(store.getState().status).toBe('absent');
 
     await store.getState().create(PASSWORD);
-    store.getState().lock();
+    store.getState().lock('manual');
     await store.getState().probe();
     expect(store.getState().status).toBe('locked');
   });
@@ -153,7 +153,7 @@ describe('creating a vault', () => {
     // would orphan everything the first encrypted.
     const { store } = realStore();
     await store.getState().create(PASSWORD);
-    store.getState().lock();
+    store.getState().lock('manual');
 
     expect(await store.getState().create(OTHER_PASSWORD)).toBe(false);
     expect(store.getState().status).toBe('locked');
@@ -194,7 +194,7 @@ describe('unlocking', () => {
   it('opens with the password and clears the previous failure', async () => {
     const { store } = realStore();
     await store.getState().create(PASSWORD);
-    store.getState().lock();
+    store.getState().lock('manual');
 
     expect(
       await store
@@ -216,7 +216,7 @@ describe('unlocking', () => {
     await store.getState().create(PASSWORD);
     const phrase = store.getState().recoveryPhrase ?? '';
     store.getState().acknowledgeRecoveryPhrase();
-    store.getState().lock();
+    store.getState().lock('manual');
 
     expect(
       await store.getState().unlock({ kind: 'recovery-phrase', phrase }),
@@ -231,7 +231,7 @@ describe('locking', () => {
     await store.getState().create(PASSWORD);
     expect(store.getState().recoveryPhrase).not.toBeNull();
 
-    store.getState().lock();
+    store.getState().lock('manual');
 
     expect(store.getState().status).toBe('locked');
     expect(store.getState().recoveryPhrase).toBeNull();
@@ -245,12 +245,36 @@ describe('locking', () => {
     const { store } = realStore();
     await store.getState().probe();
     expect(store.getState().status).toBe('absent');
-    store.getState().lock();
+    store.getState().lock('manual');
     expect(store.getState().status).toBe('absent');
 
     const fresh = realStore().store;
-    fresh.getState().lock();
+    fresh.getState().lock('manual');
     expect(fresh.getState().status).toBe('unknown');
+  });
+
+  it('records why it locked, so the unlock screen can say so', async () => {
+    const { store } = realStore();
+    await store.getState().create(PASSWORD);
+    expect(store.getState().lockReason).toBeNull();
+
+    store.getState().lock('idle');
+    expect(store.getState().lockReason).toBe('idle');
+
+    // A reason is about the *last* lock; a successful unlock ends it.
+    await store.getState().unlock({ kind: 'password', password: PASSWORD });
+    expect(store.getState().lockReason).toBeNull();
+
+    store.getState().lock('manual');
+    expect(store.getState().lockReason).toBe('manual');
+  });
+
+  it('keeps no reason when there was nothing to lock', async () => {
+    // Sign-out locks unconditionally; an absent vault has no lock to explain.
+    const { store } = realStore();
+    await store.getState().probe();
+    store.getState().lock('session-ended');
+    expect(store.getState().lockReason).toBeNull();
   });
 });
 
