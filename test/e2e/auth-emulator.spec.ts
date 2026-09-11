@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 
+import { stringsFor } from '../../app/i18n';
 import {
   MASTER_PASSWORD,
   screen,
@@ -61,7 +62,7 @@ test.describe.configure({ retries: 2 });
 
 const WRONG_PASSWORD = 'quasi ma non proprio la password';
 
-test('signs in, creates a vault, locks it and unlocks it again', async ({
+test('signs in, creates a vault, locks it, unlocks it and idles out', async ({
   page,
 }) => {
   // Playwright's 30s default would expire inside the sign-in wait rather than
@@ -90,6 +91,12 @@ test('signs in, creates a vault, locks it and unlocks it again', async ({
     await expect(screen(page, 'vault-setup-password')).toBeVisible({
       timeout: 60_000,
     });
+
+    // From here on the page's clock is Playwright's, so the idle step below
+    // can jump thirty minutes instead of waiting them. Installed *after* the
+    // popup sign-in, whose relay-readiness waits are real-time on purpose, and
+    // *before* the vault opens, so the idle watcher's interval is a fake one.
+    await page.clock.install();
     await expect(page.getByTestId('identity-chip')).toHaveCount(0);
   });
 
@@ -183,6 +190,36 @@ test('signs in, creates a vault, locks it and unlocks it again', async ({
     await expect(screen(page, 'vault-unlock-recovery')).toBeVisible();
 
     await page.getByTestId('recovery-input').fill(recoveryPhrase);
+    await page.getByTestId('unlock').click();
+    await expect(page.getByTestId('identity-chip')).toBeVisible({
+      timeout: 30_000,
+    });
+  });
+
+  await test.step('thirty idle minutes lock the vault and say so', async () => {
+    // FOUN-10. Nothing is clicked: the clock moves, the watcher notices, the
+    // gate unmounts the app. The subtitle is the one visible difference from
+    // a manual lock, and the only thing the screen is told about the reason.
+    await page.clock.fastForward('31:00');
+
+    await expect(screen(page, 'vault-unlock')).toBeVisible();
+    await expect(
+      page.getByText(stringsFor('en').unlock_idle_sub),
+    ).toBeVisible();
+    await expect(screen(page, 'sign-in')).toHaveCount(0);
+
+    await page.getByTestId('unlock-password').fill(MASTER_PASSWORD);
+    await page.getByTestId('unlock').click();
+    await expect(page.getByTestId('identity-chip')).toBeVisible({
+      timeout: 30_000,
+    });
+    // A successful unlock ends the reason: the next lock is not "idle".
+    await page.getByTestId('lock-vault').click();
+    await expect(screen(page, 'vault-unlock')).toBeVisible();
+    await expect(page.getByText(stringsFor('en').unlock_idle_sub)).toHaveCount(
+      0,
+    );
+    await page.getByTestId('unlock-password').fill(MASTER_PASSWORD);
     await page.getByTestId('unlock').click();
     await expect(page.getByTestId('identity-chip')).toBeVisible({
       timeout: 30_000,

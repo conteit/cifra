@@ -110,6 +110,8 @@ export const it: Strings = {
   // Schermata di sblocco
   unlock_title: 'Sblocca il tuo vault',
   unlock_sub: 'La tua password principale decifra questo dispositivo.',
+  unlock_idle_sub:
+    'Bloccato dopo 30 minuti di inattività. La tua password principale decifra questo dispositivo.',
   unlock_password_label: 'Password principale',
   unlock_btn: 'Sblocca',
   unlocking: 'Sblocco in corso...',
