@@ -23,18 +23,15 @@ import {
    primitives it composes, and nothing else. Identity, sign-in and the vault
    lock are the caller's business:
 
-     · #9 (sign-in + vault setup) mounts *outside* this shell — the sign-in
-       screen is a sibling route of the layout route, so it renders with no nav
-       and no header. Once signed in, the route guard redirects into the layout
-       and this is what lands. The signed-in user chip is passed down through
-       the `identity` slot, so the dependency points route → shell and never
-       shell → session store.
-     · #10 (lock screen + idle auto-lock) needs no prop at all: it is a
-       `Modal` with `dismissible={false}` rendered by the layout route beside
-       `<AppShell>`. A native `<dialog>` opened with `showModal()` sits in the
-       top layer and makes the rest of the document inert, so it covers the
-       shell regardless of DOM position — adding an `overlay` prop here would
-       buy nothing and would put lock policy inside a layout component.
+     · The sign-in, vault-setup and unlock screens mount *outside* this
+       shell, from the gate layout above the layout route (D27): they render
+       with no nav and no header, and this is what lands once the vault is
+       open. The signed-in user chip is passed down through the `identity`
+       slot, so the dependency points route → shell and never shell → store.
+     · The lock screen is that same gate: a locked vault unmounts the layout
+       route, shell included, rather than covering it with a modal (D28). So
+       the shell needs no overlay prop and holds no lock policy — the only
+       lock-related thing it renders is whatever the `identity` slot passes.
 
    ## Copy
 

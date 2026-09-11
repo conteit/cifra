@@ -13,10 +13,9 @@ import { Button } from '../ui/button';
    and never key material (key hierarchy step 1). Nothing here reads the vault
    beyond calling `onLock`.
 
-   **What #10 inherits:** the manual lock button is the only lock trigger that
-   ships with #9, because the e2e journey needs a way to close a vault it just
-   created. The idle timeout and the wipe on tab close are #10's, and they call
-   the same store action this button does.
+   The lock button is one of three lock edges (FOUN-10): the idle timeout and
+   the wipe on leaving the page call the same store action this button does,
+   with a different reason (D28).
    ═══════════════════════════════════════════════════════════════════════════ */
 
 export type IdentityChipStrings = Pick<
