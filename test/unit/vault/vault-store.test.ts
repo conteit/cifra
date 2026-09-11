@@ -278,6 +278,41 @@ describe('locking', () => {
   });
 });
 
+describe('a lock that lands mid-operation', () => {
+  // Sprint 02 review, #90: sign out while Argon2id runs, and the derivation
+  // used to finish into an unlocked vault with nobody signed in — the next
+  // account to sign in walked straight into it. A lock of any reason that
+  // arrives while an unlock or create is in flight must win over the outcome.
+  it('discards an unlock that resolves after it', async () => {
+    const { store, keys } = realStore();
+    await store.getState().create(PASSWORD);
+    store.getState().lock('manual');
+
+    const unlocking = store
+      .getState()
+      .unlock({ kind: 'password', password: PASSWORD });
+    store.getState().lock('session-ended');
+
+    await expect(unlocking).resolves.toBe(false);
+    expect(store.getState().status).toBe('locked');
+    expect(store.getState().pending).toBe('idle');
+    expect(keys.isUnlocked).toBe(false);
+  });
+
+  it('discards a create that resolves after it, phrase included', async () => {
+    const { store, keys } = realStore();
+    await store.getState().probe();
+
+    const creating = store.getState().create(PASSWORD);
+    store.getState().lock('session-ended');
+
+    await expect(creating).resolves.toBe(false);
+    expect(store.getState().status).not.toBe('unlocked');
+    expect(store.getState().recoveryPhrase).toBeNull();
+    expect(keys.isUnlocked).toBe(false);
+  });
+});
+
 describe('matching the phrase back', () => {
   it('accepts the phrase in hand and refuses when there is none', async () => {
     const { store } = realStore();
